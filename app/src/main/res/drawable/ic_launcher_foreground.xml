@@ -31,41 +31,35 @@
         android:fillColor="#3A2A1A"
         android:pathData="M62,32 Q82,28 88,46 Q78,42 70,36 Z" />
 
-    <!-- eyes -->
-    <circle
+    <!-- left eye -->
+    <path
         android:fillColor="#3A3028"
-        android:cx="40"
-        android:cy="52"
-        android:r="5" />
-    <circle
+        android:pathData="M35,52 A5,5 0 1,1 45,52 A5,5 0 1,1 35,52 Z" />
+
+    <!-- right eye -->
+    <path
         android:fillColor="#3A3028"
-        android:cx="68"
-        android:cy="52"
-        android:r="5" />
+        android:pathData="M63,52 A5,5 0 1,1 73,52 A5,5 0 1,1 63,52 Z" />
 
-    <!-- eye highlights -->
-    <circle
+    <!-- left eye highlight -->
+    <path
         android:fillColor="#FFFFFF"
-        android:cx="42"
-        android:cy="50"
-        android:r="1.5" />
-    <circle
-        android:fillColor="#FFFFFF"
-        android:cx="70"
-        android:cy="50"
-        android:r="1.5" />
+        android:pathData="M40.5,50 A1.5,1.5 0 1,1 43.5,50 A1.5,1.5 0 1,1 40.5,50 Z" />
 
-    <!-- blush -->
-    <circle
+    <!-- right eye highlight -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68.5,50 A1.5,1.5 0 1,1 71.5,50 A1.5,1.5 0 1,1 68.5,50 Z" />
+
+    <!-- left blush -->
+    <path
         android:fillColor="#33E88B9D"
-        android:cx="30"
-        android:cy="62"
-        android:r="6" />
-    <circle
+        android:pathData="M24,62 A6,6 0 1,1 36,62 A6,6 0 1,1 24,62 Z" />
+
+    <!-- right blush -->
+    <path
         android:fillColor="#33E88B9D"
-        android:cx="78"
-        android:cy="62"
-        android:r="6" />
+        android:pathData="M72,62 A6,6 0 1,1 84,62 A6,6 0 1,1 72,62 Z" />
 
     <!-- mouth (smile) -->
     <path
