@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>昔涟桌宠 · 预览测试</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a1a2e; overflow:hidden; font-family:sans-serif;
+       -webkit-user-select:none; user-select:none; touch-action:none; }
+canvas { display:block; position:absolute; top:0; left:0; }
+
+#controls { position:fixed; bottom:0; left:0; right:0; background:#16213e;
+            color:#e0d5c5; padding:14px 16px; font-size:12px; z-index:10;
+            display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+#controls label { font-size:11px; opacity:0.7; margin-right:2px; }
+#controls input[type=range] { width:70px; accent-color:#c9a87c; }
+#controls button { background:#2a1a3e; color:#e0d5c5; border:1px solid #5c4b3c;
+                   padding:6px 12px; border-radius:12px; font-size:11px; cursor:pointer; }
+#controls button:active { background:#5c4b3c; }
+
+#bubble { position:fixed; pointer-events:none; background:#fffffaee; color:#3a3028;
+          padding:10px 16px; border-radius:16px; font-size:14px; max-width:260px;
+          box-shadow:0 2px 12px rgba(0,0,0,0.3); opacity:0; transition:opacity 0.3s;
+          border:1.5px solid #d4c5b2; z-index:5; white-space:pre-wrap; }
+#bubble::after { content:''; position:absolute; bottom:-10px; left:50%;
+    transform:translateX(-50%); width:0; height:0; border-left:8px solid transparent;
+    border-right:8px solid transparent; border-top:10px solid #fffffaee; }
+
+#dialog, #settings { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+          background:white; border-radius:20px; padding:24px; z-index:20; min-width:300px; max-width:360px;
+          box-shadow:0 8px 32px rgba(0,0,0,0.4); text-align:center; }
+#dialog.show, #settings.show { display:block; }
+#dialog h3, #settings h3 { color:#3a3028; font-size:16px; margin-bottom:12px; }
+#dialog textarea { width:100%; height:80px; border:none; background:#f8f4f0;
+                   border-radius:12px; padding:12px; font-size:14px; resize:none;
+                   outline:none; color:#3a3028; margin-bottom:12px; }
+#dialog button, #settings button { padding:8px 20px; border-radius:14px; font-size:13px;
+    cursor:pointer; margin:3px; border:none; }
+#settings button.primary { background:#8b6b5a; color:white; }
+#settings button.cancel { background:#c4b5a5; color:white; }
+#settings button.danger { background:#e8d5d0; color:#8b3030; }
+#dialog button { background:#8b6b5a; color:white; margin:0 4px; }
+#dialog button.cancel { background:#c4b5a5; }
+#overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:19; }
+#overlay.show { display:block; }
+
+#settings table { width:100%; font-size:13px; color:#3a3028; margin:12px 0; }
+#settings td { padding:6px 0; text-align:left; }
+#settings td:first-child { width:55px; font-weight:600; }
+#settings td:last-child { text-align:right; }
+#settings .slot { display:inline-block; width:36px; height:36px; border-radius:8px;
+    background:#f0ebe4; border:1.5px dashed #c4b5a5; vertical-align:middle;
+    background-size:cover; background-position:center; margin-right:8px; }
+#settings .slot.set { border-style:solid; border-color:#8b6b5a; }
+#settings .slot-label { font-size:11px; vertical-align:middle; color:#8b7b6b; }
+#settings .warn { font-size:11px; color:#c4846b; margin-top:4px; display:none; }
+
+#status { position:fixed; top:8px; right:12px; font-size:11px; color:#8b7b6b; z-index:3; }
+</style>
+</head>
+<body>
+
+<div id="bubble"></div>
+<div id="overlay" onclick="hideAll()"></div>
+<div id="dialog">
+  <h3>跟人家说什么？</h3>
+  <textarea id="dlgInput" placeholder="在这里写…"></textarea>
+  <div>
+    <button class="cancel" onclick="hideDialog()">取消</button>
+    <button onclick="sendMessage()">发送</button>
+  </div>
+</div>
+<div id="settings">
+  <h3>更换桌宠图片</h3>
+  <p style="font-size:12px;color:#8b7b6b;margin-bottom:8px;">至少需要填入 睁眼 / 半睁 / 闭眼 三张</p>
+  <table id="slotsTable"></table>
+  <p class="warn" id="slotWarn">请先填满 睁眼 / 半睁 / 闭眼 三个必选项</p>
+  <div style="margin-top:12px;">
+    <button class="danger" onclick="resetAllSlots()">恢复默认</button>
+    <button class="cancel" onclick="hideSettings()">取消</button>
+    <button class="primary" onclick="applySlots()">应用</button>
+  </div>
+</div>
+<div id="status"></div>
+
+<div id="controls">
+  <span style="font-weight:600;margin-right:4px;">昔涟 v0.2</span>
+  <label>透明</label><input type="range" id="opacity" min="10" max="100" value="100" oninput="petAlpha=this.value/100;draw();">
+  <button id="toggleBtn" onclick="toggleVisible()">隐藏</button>
+  <button onclick="randomBubble()">戳</button>
+  <button onclick="showDialog()">聊</button>
+  <button id="swingBtn" onclick="toggleSwing()">秋千</button>
+  <button id="sleepBtn" onclick="toggleSleep()">睡觉</button>
+  <button id="shyBtn" onclick="triggerShy()">撒娇</button>
+  <button id="readBtn" onclick="toggleRead()">看书</button>
+  <button onclick="showSettings()">换装</button>
+  <span id="imgStatus" style="font-size:10px;opacity:0.6"></span>
+  <span style="font-size:10px;opacity:0.4;margin-left:auto;">拖移 | 缩放 | 旋转 | 单击 | 双击</span>
+</div>
+
+<canvas id="c"></canvas>
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+
+<script>
+// ── 昔涟桌宠 v0.2 · 网页预览 ──
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const bubble = document.getElementById('bubble');
+const dialog = document.getElementById('dialog');
+const settings = document.getElementById('settings');
+const overlay = document.getElementById('overlay');
+const dlgInput = document.getElementById('dlgInput');
+const statusEl = document.getElementById('status');
+const fileInput = document.getElementById('fileInput');
+
+// pet state
+let petX = 160, petY = 420, petR = 100, petAlpha = 1.0, petVisible = true;
+let expression = 'NEUTRAL';
+let swayOff = 0, stretchScale = 1, turnAngle = 0, userRotation = 0;
+let blinkFrameIdx = 0, blinkRunning = false;
+let swingFrameIdx = 0, swingRunning = false;
+let swingMode = false;
+let swingOffsetX = 0;
+let swingInterval = null;
+let sleepMode = false;    // sleeping state
+let shyMode = false;      // shy/sweet state
+let shyTimer = null;
+let sleepTimer = null;
+let readMode = false;    // reading state (continuous like swing)
+let lastInteraction = Date.now();
+let pinchDirChanges = 0;  // count direction reversals during pinch
+let lastPinchScale = 1;
+let bubbleText = '', bubbleAlpha = 0, bubbleTimer = null;
+
+// image slots — each expression maps to an Image or null
+const STATE_KEYS = ['open', 'half', 'closed', 'sleep', 'shy', 'read', 'swing0', 'swing1', 'swing2'];
+const STATE_LABELS = ['睁眼 *', '半睁 *', '闭眼 *', '睡觉', '撒娇', '看书', '秋千1', '秋千2', '秋千3'];
+let petStates = {};  // { open: Image, half: Image, closed: Image, sleep: Image|null, shy: Image|null }
+let pendingSlots = {}; // temp storage during settings editing
+let currentSlotEdit = null; // which slot is being uploaded
+
+// gestures
+let touchState = { startTime:0, startX:0, startY:0, startPetX:0, startPetY:0,
+                   lastTap:0, pendingTap:null, dragging:false, pinching:false,
+                   pinchStartDist:0, pinchStartR:0, pinchStartAngle:0, pinchStartRotation:0 };
+
+const phrases = [
+  "伙伴~", "嗯？", "在呢", "想你了", "嘻嘻",
+  "人家在看着你哦", "累了就休息一下嘛",
+  "三千万世的轮回,\n只为这一刻的相遇", "伙伴最好啦", "诶嘿~",
+  "不许欺负人家", "呀,被发现了", "哼"
+];
+
+const sleepyPhrases = [
+  "呼…别打扰人家…", "好困…让睡一会儿嘛…", "Zzz…嗯…伙伴？",
+  "人家正在梦里跟你聊天呢…", "再睡五分钟…", "不要摇人家啦…"
+];
+
+function sleepyBubble() {
+  showBubble(sleepyPhrases[Math.floor(Math.random() * sleepyPhrases.length)]);
+}
+
+// ── canvas sizing ──
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  draw();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ── get current display image ──
+
+function getCurrentImage() {
+  if (swingMode || swingRunning) {
+    const keys = ['swing0', 'swing1', 'swing2'];
+    return petStates[keys[swingFrameIdx]] || petStates.open || null;
+  }
+  if (readMode && petStates.read) return petStates.read;
+  if (sleepMode && petStates.sleep) return petStates.sleep;
+  if (shyMode && petStates.shy) return petStates.shy;
+  if (blinkRunning || expression === 'NEUTRAL') {
+    return petStates.open || null;
+  }
+  const map = { SLEEPY:'sleep', BLUSH:'shy', SHY:'shy', HAPPY:'open', THINKING:'open' };
+  const key = map[expression] || 'open';
+  return petStates[key] || petStates.open || null;
+}
+
+// ── drawing ──
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!petVisible) return;
+
+  const cx = petX, cy = petY, r = petR * stretchScale;
+  ctx.save();
+  ctx.globalAlpha = petAlpha;
+  ctx.translate(cx + swayOff + swingOffsetX, cy);
+  ctx.scale(stretchScale, stretchScale);
+  ctx.rotate((turnAngle + userRotation) * Math.PI / 180);
+
+  const img = getCurrentImage();
+  if (img) {
+    const baseSize = r * 2.8;
+    const s = baseSize / Math.max(img.width, img.height);
+    ctx.drawImage(img, -img.width*s/2, -img.height*s/2, img.width*s, img.height*s);
+  } else {
+    // canvas fallback
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2);
+    ctx.fillStyle = '#fff5ee'; ctx.fill();
+    ctx.strokeStyle = '#5c4b3c'; ctx.lineWidth = 2.5; ctx.stroke();
+    drawHair(r); drawBangs(r); drawEyes(r); drawMouth(r); drawBody(r);
+  }
+
+  ctx.restore();
+  drawBubble();
+}
+
+function drawHair(r) {
+  ctx.fillStyle = '#3a2a1a'; ctx.beginPath();
+  ctx.arc(0, 0, r+3, Math.PI, 0); ctx.lineTo(r*0.8, -r*1.2);
+  ctx.quadraticCurveTo(r*0.7, -r*1.5, r*0.3, -r*1.35);
+  ctx.quadraticCurveTo(0, -r*1.45, -r*0.4, -r*1.3);
+  ctx.quadraticCurveTo(-r*0.85, -r*1.35, -r, -r*0.5); ctx.fill();
+}
+function drawBangs(r) {
+  ctx.fillStyle = '#3a2a1a'; ctx.beginPath();
+  ctx.moveTo(-r*0.9, -r*0.4); ctx.quadraticCurveTo(-r*0.6, -r*0.85, -r*0.15, -r*0.65);
+  ctx.quadraticCurveTo(r*0.1, -r*0.85, r*0.5, -r*0.55);
+  ctx.quadraticCurveTo(r*0.75, -r*0.75, r*0.85, -r*0.35);
+  ctx.lineTo(r*0.9, -r*0.1); ctx.quadraticCurveTo(r*0.5, -r*0.25, -r*0.1, -r*0.2);
+  ctx.quadraticCurveTo(-r*0.7, -r*0.15, -r*0.85, -r*0.15); ctx.fill();
+}
+function drawEyes(r) {
+  const ey = -r*0.15, er = r*0.1, es = r*0.35;
+  ctx.fillStyle = '#3a3028';
+  ctx.beginPath(); ctx.arc(-es, ey, er, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(es, ey, er, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.arc(-es+er*0.3, ey-er*0.35, er*0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(es+er*0.3, ey-er*0.35, er*0.3, 0, Math.PI*2); ctx.fill();
+}
+function drawMouth(r) {
+  ctx.strokeStyle = '#5c4b3c'; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.arc(0, r*0.38, r*0.06, 0, Math.PI, true); ctx.stroke();
+}
+function drawBody(r) {
+  const bw = r*0.45, bh = r*0.5, top = r+5;
+  ctx.strokeStyle = '#5c4b3c'; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(-bw*0.3, top); ctx.quadraticCurveTo(-bw*0.5, top+bh*0.5, -bw*0.4, top+bh);
+  ctx.lineTo(bw*0.4, top+bh); ctx.quadraticCurveTo(bw*0.5, top+bh*0.5, bw*0.3, top);
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = '#8b6b5a'; ctx.lineWidth = 1.5; ctx.beginPath();
+  ctx.moveTo(-bw*0.25, top+2); ctx.lineTo(0, top-4); ctx.lineTo(bw*0.25, top+2); ctx.stroke();
+}
+
+function drawBubble() {
+  if (!bubbleText || bubbleAlpha <= 0.01) { bubble.style.opacity = '0'; return; }
+  bubble.textContent = bubbleText; bubble.style.opacity = bubbleAlpha;
+  bubble.style.left = (petX - 120) + 'px';
+  bubble.style.top = Math.max(10, petY - petR - 100) + 'px';
+}
+
+// ── animations ──
+
+let idleTimer = Date.now();
+function idleLoop() {
+  const elapsed = Date.now() - idleTimer;
+  if (elapsed > 10000 && Math.random() < 0.3) playRandomIdle();
+  else if (elapsed > 6000 && Math.random() < 0.15) playRandomIdle();
+  setTimeout(idleLoop, 2000);
+}
+setTimeout(idleLoop, 4000);
+
+function playRandomIdle() {
+  if (sleepMode || shyMode || readMode || swingMode) return;
+  idleTimer = Date.now();
+  const hasSwing = petStates.swing0 && petStates.swing1 && petStates.swing2;
+  const hasRead = !!petStates.read;
+  const total = 4 + (hasSwing ? 1 : 0) + (hasRead ? 1 : 0);
+  const n = Math.floor(Math.random() * total);
+  if (n < 4) {
+    if (n === 0) swayAnim();
+    else if (n === 1) blinkAnim();
+    else if (n === 2) stretchAnim();
+    else turnAnim();
+  } else if (n === 4 && hasSwing) {
+    swingAnim();
+  } else {
+    startRead();
+  }
+}
+
+function swayAnim() {
+  let t = 0; const a = setInterval(() => { swayOff = Math.sin(t++*0.08)*10; draw(); if (t>80) { clearInterval(a); swayOff=0; draw(); } }, 16);
+}
+function blinkAnim() {
+  if (blinkRunning) return;
+  if (!petStates.open || !petStates.half || !petStates.closed) return;
+  blinkRunning = true;
+  const seq = [0, 1, 2, 1, 0]; // open→half→closed→half→open
+  let step = 0;
+  blinkFrameIdx = seq[0]; draw();
+  const iv = setInterval(() => {
+    step++;
+    if (step >= seq.length) { clearInterval(iv); blinkFrameIdx = 0; blinkRunning = false; draw(); return; }
+    blinkFrameIdx = seq[step]; draw();
+  }, 150);
+}
+function swingAnim() {
+  if (swingRunning || swingMode) return;
+  if (!petStates.swing0 || !petStates.swing1 || !petStates.swing2) return;
+  swingRunning = true;
+  const seq = [0, 1, 2, 1, 0, 1, 2, 1, 0]; // two full oscillations
+  let step = 0;
+  swingFrameIdx = seq[0]; applySwingOffset(0); draw();
+  const iv = setInterval(() => {
+    step++;
+    if (step >= seq.length) { clearInterval(iv); swingFrameIdx = 0; swingOffsetX = 0; swingRunning = false; draw(); return; }
+    swingFrameIdx = seq[step]; applySwingOffset(swingFrameIdx); draw();
+  }, 500);
+}
+
+function toggleSwing() {
+  if (!petStates.swing0 || !petStates.swing1 || !petStates.swing2) return;
+  if (swingMode) {
+    stopSwing();
+  } else {
+    startSwing();
+  }
+}
+
+function applySwingOffset(idx) {
+  // left=-1 → offset left, middle=0 → center, right=+1 → offset right
+  const offsets = [-petR*0.35, 0, petR*0.35];
+  swingOffsetX = offsets[idx] || 0;
+}
+
+function startSwing() {
+  swingMode = true; swingRunning = false;
+  if (swingInterval) clearInterval(swingInterval);
+  // clean pendulum: left→middle→right→middle
+  const seq = [0, 1, 2, 1];
+  let step = 0;
+  swingFrameIdx = 0; applySwingOffset(0); draw();
+  swingInterval = setInterval(() => {
+    step = (step + 1) % seq.length;
+    swingFrameIdx = seq[step]; applySwingOffset(swingFrameIdx); draw();
+  }, 500);
+  document.getElementById('swingBtn').textContent = '停止';
+  document.getElementById('imgStatus').textContent = '荡秋千中';
+  idleTimer = Date.now(); // reset idle timer so idle animations don't overlap
+}
+
+function stopSwing() {
+  swingMode = false;
+  if (swingInterval) { clearInterval(swingInterval); swingInterval = null; }
+  swingFrameIdx = 0; swingOffsetX = 0; draw();
+  document.getElementById('swingBtn').textContent = '秋千';
+  document.getElementById('imgStatus').textContent = '默认';
+  idleTimer = Date.now();
+}
+
+function onUserInteract() {
+  lastInteraction = Date.now();
+  if (swingMode) stopSwing();
+  if (readMode) stopRead();
+  if (shyMode) clearShy();
+  resetSleepTimer();
+}
+
+function resetSleepTimer() {
+  clearTimeout(sleepTimer);
+  sleepTimer = setTimeout(() => {
+    if (!sleepMode && !swingMode && !shyMode) enterSleep();
+  }, 60000); // 1 minute
+}
+
+function enterSleep() {
+  sleepMode = true;
+  document.getElementById('sleepBtn').textContent = '醒来';
+  document.getElementById('imgStatus').textContent = 'Zzz...';
+  draw();
+}
+
+function wakeUp() {
+  sleepMode = false;
+  document.getElementById('sleepBtn').textContent = '睡觉';
+  document.getElementById('imgStatus').textContent = '默认';
+  draw();
+}
+
+function toggleSleep() {
+  if (sleepMode) { wakeUp(); resetSleepTimer(); }
+  else { clearTimeout(sleepTimer); enterSleep(); }
+}
+
+function triggerShy() {
+  if (shyMode) { clearShy(); return; }
+  if (sleepMode) wakeUp();
+  shyMode = true;
+  document.getElementById('shyBtn').textContent = '好啦';
+  document.getElementById('imgStatus').textContent = '撒娇中~';
+  draw();
+  clearTimeout(shyTimer);
+  shyTimer = setTimeout(() => clearShy(), 3000); // auto-clear after 3s
+}
+
+function clearShy() {
+  shyMode = false;
+  clearTimeout(shyTimer);
+  document.getElementById('shyBtn').textContent = '撒娇';
+  if (document.getElementById('imgStatus').textContent === '撒娇中~') {
+    document.getElementById('imgStatus').textContent = '默认';
+  }
+  draw();
+}
+function stretchAnim() {
+  let t = 0; const a = setInterval(() => { stretchScale = 1+Math.sin(t++*0.15)*0.05; draw(); if (t>40) { clearInterval(a); stretchScale=1; draw(); } }, 16);
+}
+function turnAnim() {
+  let t = 0; const a = setInterval(() => { turnAngle = Math.sin(t++*0.1)*10; draw(); if (t>60) { clearInterval(a); turnAngle=0; draw(); } }, 16);
+}
+
+// ── bubble / expression ──
+
+function showBubble(text) { bubbleText = text; bubbleAlpha = 1; clearTimeout(bubbleTimer); bubbleTimer = setTimeout(() => { bubbleAlpha=0; draw(); }, 3500); draw(); }
+function randomBubble() { showBubble(phrases[Math.floor(Math.random()*phrases.length)]); }
+function setExpression(expr) { expression = expr; draw(); }
+
+// ── dialog ──
+
+function showDialog() { dialog.classList.add('show'); overlay.classList.add('show'); dlgInput.value=''; setTimeout(() => dlgInput.focus(), 200); }
+function hideDialog() { dialog.classList.remove('show'); overlay.classList.remove('show'); }
+function sendMessage() {
+  const t = dlgInput.value.trim(); hideDialog(); if (!t) return;
+  showBubble('[Termux] 人家收到了——\n"'+t.substring(0,50)+'"');
+  setExpression('THINKING'); setTimeout(() => setExpression('NEUTRAL'), 2000);
+}
+
+// ── settings panel ──
+
+function buildSlotsTable() {
+  const table = document.getElementById('slotsTable');
+  let html = '';
+  STATE_KEYS.forEach((key, i) => {
+    const hasImg = pendingSlots[key] !== null && pendingSlots[key] !== undefined;
+    const cls = hasImg ? 'slot set' : 'slot';
+    const label = hasImg ? '✓' : '未设';
+    html += '<tr><td>'+STATE_LABELS[i]+'</td><td>'+
+      '<div class="'+cls+'" id="slotPreview_'+key+'" style="'+(hasImg ? 'background-image:url('+pendingSlots[key].src+')' : '')+'"></div>'+
+      '<span class="slot-label">'+label+'</span></td>'+
+      '<td><button onclick="uploadSlot(\''+key+'\')">选择</button></td></tr>';
+  });
+  table.innerHTML = html;
+}
+
+function uploadSlot(key) {
+  currentSlotEdit = key;
+  fileInput.onchange = function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      const img = new Image();
+      img.onload = function() {
+        pendingSlots[key] = img;
+        buildSlotsTable();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  fileInput.click();
+}
+
+function showSettings() {
+  // copy current state to pending
+  STATE_KEYS.forEach(k => { pendingSlots[k] = petStates[k] || null; });
+  buildSlotsTable();
+  document.getElementById('slotWarn').style.display = 'none';
+  settings.classList.add('show'); overlay.classList.add('show');
+}
+
+function hideSettings() { settings.classList.remove('show'); overlay.classList.remove('show'); }
+function hideAll() { hideDialog(); hideSettings(); }
+
+function applySlots() {
+  // validate required: open, half, closed
+  const missing = ['open', 'half', 'closed'].filter(k => !pendingSlots[k]);
+  if (missing.length > 0) {
+    document.getElementById('slotWarn').style.display = 'block';
+    return;
+  }
+  // apply all
+  STATE_KEYS.forEach(k => { petStates[k] = pendingSlots[k] || null; });
+  blinkFrameIdx = 0; blinkRunning = false;
+  document.getElementById('imgStatus').textContent = '自定义';
+  hideSettings();
+  draw();
+}
+
+function resetAllSlots() {
+  loadDefaultFrames();
+  hideSettings();
+}
+
+// ── load defaults ──
+
+function loadDefaultFrames() {
+  const paths = {
+    open:'pet_open.png', half:'pet_half.png', closed:'pet_closed.png',
+    swing0:'pet_swing0.png', swing1:'pet_swing1.png', swing2:'pet_swing2.png'
+  };
+  let loaded = 0; const total = Object.keys(paths).length;
+  Object.entries(paths).forEach(([k, path]) => {
+    const img = new Image();
+    img.onload = function() {
+      petStates[k] = img; loaded++;
+      if (loaded >= total) {
+        petStates.sleep = null; petStates.shy = null;
+        blinkFrameIdx = 0; blinkRunning = false; swingRunning = false;
+        document.getElementById('imgStatus').textContent = '默认';
+        draw();
+      }
+    };
+    img.src = path;
+  });
+}
+
+function toggleRead() {
+  if (readMode) { stopRead(); } else { startRead(); }
+}
+
+function startRead() {
+  if (!petStates.read) return;
+  if (sleepMode) wakeUp();
+  readMode = true;
+  document.getElementById('readBtn').textContent = '看完';
+  document.getElementById('imgStatus').textContent = '看书中';
+  draw();
+}
+
+function stopRead() {
+  readMode = false;
+  document.getElementById('readBtn').textContent = '看书';
+  if (document.getElementById('imgStatus').textContent === '看书中') {
+    document.getElementById('imgStatus').textContent = '默认';
+  }
+  draw();
+}
+
+// ── controls ──
+
+function toggleVisible() { petVisible = !petVisible; document.getElementById('toggleBtn').textContent = petVisible?'隐藏':'显示'; draw(); }
+
+// ── touch ──
+
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    touchState.startTime = Date.now(); touchState.startX = t.clientX; touchState.startY = t.clientY;
+    touchState.startPetX = petX; touchState.startPetY = petY;
+    touchState.dragging = false; touchState.pinching = false;
+    onUserInteract();
+  } else if (e.touches.length === 2 && Date.now() - touchState.startTime > 180) {
+    touchState.pinching = true;
+    onUserInteract();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchState.pinchStartDist = Math.sqrt(dx*dx+dy*dy);
+    touchState.pinchStartAngle = Math.atan2(dy, dx);
+    touchState.pinchStartR = petR; touchState.pinchStartRotation = userRotation;
+    pinchDirChanges = 0; lastPinchScale = 1;
+    clearTimeout(touchState.pendingTap);
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  if (touchState.pinching && e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx+dy*dy), angle = Math.atan2(dy, dx);
+    const scale = dist / touchState.pinchStartDist;
+    petR = Math.max(30, Math.min(300, touchState.pinchStartR * scale));
+    userRotation = touchState.pinchStartRotation + (angle - touchState.pinchStartAngle) * 180 / Math.PI;
+    // track zoom direction changes for auto-shy
+    if (scale > lastPinchScale * 1.08) { /* zooming out */ }
+    else if (scale < lastPinchScale * 0.92) {
+      if (lastPinchScale > 1.08) pinchDirChanges++;
+    }
+    lastPinchScale = scale;
+    draw();
+  } else if (!touchState.pinching && e.touches.length === 1) {
+    const dx = e.touches[0].clientX - touchState.startX, dy = e.touches[0].clientY - touchState.startY;
+    if (Math.abs(dx)+Math.abs(dy) > 8 && Date.now()-touchState.startTime > 150) {
+      touchState.dragging = true; clearTimeout(touchState.pendingTap);
+      petX = touchState.startPetX + dx; petY = touchState.startPetY + dy; draw();
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  if (touchState.pinching) {
+    touchState.pinching = false;
+    // pinch wakes up sleeping pet
+    if (sleepMode) wakeUp();
+    // auto-shy: one direction reversal (zoom in→out or out→in) triggers shy
+    if (pinchDirChanges >= 1) triggerShy();
+    idleTimer = Date.now(); return;
+  }
+  if (touchState.dragging) { touchState.dragging = false; idleTimer = Date.now(); return; }
+  if (sleepMode) { sleepyBubble(); return; } // tap in sleep → sleepy message
+  const now = Date.now();
+  if (now - touchState.lastTap < 350) { clearTimeout(touchState.pendingTap); touchState.lastTap = 0; showDialog(); }
+  else { touchState.lastTap = now; touchState.pendingTap = setTimeout(() => randomBubble(), 360); }
+  e.preventDefault();
+});
+
+// ── mouse ──
+
+let mouseDown = false, mouseDrag = false;
+canvas.addEventListener('mousedown', e => {
+  mouseDown = true; mouseDrag = false;
+  onUserInteract();
+  touchState.startTime = Date.now(); touchState.startX = e.clientX; touchState.startY = e.clientY;
+  touchState.startPetX = petX; touchState.startPetY = petY; touchState.lastTap = 0;
+});
+canvas.addEventListener('mousemove', e => {
+  if (!mouseDown) return;
+  const dx = e.clientX-touchState.startX, dy = e.clientY-touchState.startY;
+  if (Math.abs(dx)+Math.abs(dy) > 5) { mouseDrag = true; petX = touchState.startPetX+dx; petY = touchState.startPetY+dy; draw(); }
+});
+canvas.addEventListener('mouseup', e => {
+  mouseDown = false;
+  if (sleepMode) { sleepyBubble(); return; }
+  if (!mouseDrag) randomBubble(); else idleTimer = Date.now();
+});
+canvas.addEventListener('wheel', e => { petR = Math.max(30,Math.min(300,petR-e.deltaY*0.2)); draw(); e.preventDefault(); }, { passive: false });
+
+// ── start ──
+loadDefaultFrames();
+</script>
+</body>
+</html>

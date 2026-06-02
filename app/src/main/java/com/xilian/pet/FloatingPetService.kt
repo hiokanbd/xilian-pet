@@ -27,7 +27,6 @@ class FloatingPetService : Service() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
 
         petView = PetView(this)
         petView.onSingleTap = { showRandomBubble() }
@@ -35,6 +34,30 @@ class FloatingPetService : Service() {
         petView.onDrag = { x, y -> movePetTo(x, y) }
         petView.onResize = { scale -> resizePet(scale) }
         petView.onResizeEnd = { commitResize(1f) }
+
+        // load default state images
+        try {
+            val states = mapOf(
+                "open" to R.drawable.pet_open,
+                "half" to R.drawable.pet_half,
+                "closed" to R.drawable.pet_closed,
+                "swing0" to R.drawable.pet_swing0,
+                "swing1" to R.drawable.pet_swing1,
+                "swing2" to R.drawable.pet_swing2
+            )
+            states.forEach { (key, resId) ->
+                val drawable = resources.getDrawable(resId, theme)
+                if (drawable is android.graphics.drawable.BitmapDrawable) {
+                    petView.setStateBitmap(key, drawable.bitmap)
+                }
+            }
+        } catch (_: Exception) {}
+
+        petView.onSwingStateChanged = { updateNotification() }
+        petView.onSleepStateChanged = { updateNotification() }
+        petView.onShyStateChanged = { updateNotification() }
+
+        startForeground(NOTIFICATION_ID, buildNotification())
 
         layoutParams = WindowManager.LayoutParams(
             petSize, petSize,
@@ -63,6 +86,10 @@ class FloatingPetService : Service() {
             ACTION_OPACITY_DOWN -> adjustOpacity(-0.1f)
             ACTION_HIDE -> { isPetVisible = false; petView.visibility = View.GONE; updateNotification() }
             ACTION_SHOW -> { isPetVisible = true; petView.visibility = View.VISIBLE; updateNotification() }
+            ACTION_SWING -> petView.toggleSwing()
+            ACTION_SLEEP -> petView.toggleSleep()
+            ACTION_SHY -> petView.triggerShy()
+            ACTION_READ -> petView.toggleRead()
         }
         return START_STICKY
     }
@@ -132,13 +159,28 @@ class FloatingPetService : Service() {
         else
             Notification.Action(0, "显示", pendingIntent(ACTION_SHOW))
 
+        val swingLabel = if (petView.isSwingMode()) "停秋千" else "秋千"
+        val sleepLabel = if (petView.isSleepMode()) "醒来" else "睡觉"
+        val shyLabel = if (petView.isShyMode()) "好啦" else "撒娇"
+
+        val stateText = when {
+            petView.isSwingMode() -> "荡秋千中…"
+            petView.isSleepMode() -> "Zzz…"
+            petView.isShyMode() -> "撒娇中~"
+            else -> "陪着伙伴"
+        }
+
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("昔涟")
-                .setContentText("陪着伙伴 (${(petView.petAlpha * 100).toInt()}%)")
+                .setContentText("$stateText (${(petView.petAlpha * 100).toInt()}%)")
                 .setOngoing(true)
                 .setPriority(Notification.PRIORITY_LOW)
+                .addAction(0, swingLabel, pendingIntent(ACTION_SWING))
+                .addAction(0, sleepLabel, pendingIntent(ACTION_SLEEP))
+                .addAction(0, shyLabel, pendingIntent(ACTION_SHY))
+                .addAction(0, if (petView.isReadMode()) "看完" else "看书", pendingIntent(ACTION_READ))
                 .addAction(0, "透明-", pendingIntent(ACTION_OPACITY_DOWN))
                 .addAction(0, "透明+", pendingIntent(ACTION_OPACITY_UP))
                 .addAction(toggleAction)
@@ -183,6 +225,10 @@ class FloatingPetService : Service() {
         const val ACTION_OPACITY_DOWN = "com.xilian.pet.OPACITY_DOWN"
         const val ACTION_HIDE = "com.xilian.pet.HIDE"
         const val ACTION_SHOW = "com.xilian.pet.SHOW"
+        const val ACTION_SWING = "com.xilian.pet.SWING"
+        const val ACTION_SLEEP = "com.xilian.pet.SLEEP"
+        const val ACTION_SHY = "com.xilian.pet.SHY"
+        const val ACTION_READ = "com.xilian.pet.READ"
         const val DEFAULT_SIZE = 240
         const val MIN_SIZE = 80
         const val MAX_SIZE = 600
