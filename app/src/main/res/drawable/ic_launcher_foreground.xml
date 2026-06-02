@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- face circle -->
+    <path
+        android:fillColor="#FFFFF5EE"
+        android:pathData="M54,54m-38,0a38,38 0,1 1,76 0a38,38 0,1 1,-76 0" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#5C4B3C"
+        android:strokeWidth="2.5"
+        android:pathData="M54,54m-38,0a38,38 0,1 1,76 0a38,38 0,1 1,-76 0" />
+
+    <!-- hair -->
+    <path
+        android:fillColor="#3A2A1A"
+        android:pathData="M16,58 Q16,26 54,20 Q92,26 92,58 L92,48 Q92,16 54,14 Q16,16 16,48 Z" />
+
+    <!-- bangs -->
+    <path
+        android:fillColor="#3A2A1A"
+        android:pathData="M18,50 Q20,32 38,34 Q28,42 26,52 Z" />
+    <path
+        android:fillColor="#3A2A1A"
+        android:pathData="M32,34 Q48,28 60,32 Q52,38 44,38 Z" />
+    <path
+        android:fillColor="#3A2A1A"
+        android:pathData="M62,32 Q82,28 88,46 Q78,42 70,36 Z" />
+
+    <!-- eyes -->
+    <circle
+        android:fillColor="#3A3028"
+        android:cx="40"
+        android:cy="52"
+        android:r="5" />
+    <circle
+        android:fillColor="#3A3028"
+        android:cx="68"
+        android:cy="52"
+        android:r="5" />
+
+    <!-- eye highlights -->
+    <circle
+        android:fillColor="#FFFFFF"
+        android:cx="42"
+        android:cy="50"
+        android:r="1.5" />
+    <circle
+        android:fillColor="#FFFFFF"
+        android:cx="70"
+        android:cy="50"
+        android:r="1.5" />
+
+    <!-- blush -->
+    <circle
+        android:fillColor="#33E88B9D"
+        android:cx="30"
+        android:cy="62"
+        android:r="6" />
+    <circle
+        android:fillColor="#33E88B9D"
+        android:cx="78"
+        android:cy="62"
+        android:r="6" />
+
+    <!-- mouth (smile) -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#5C4B3C"
+        android:strokeWidth="2"
+        android:pathData="M48,66 Q54,74 60,66" />
+
+    <!-- small body -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#5C4B3C"
+        android:strokeWidth="2"
+        android:pathData="M46,90 Q40,100 44,104 L64,104 Q68,100 62,90" />
+
+    <!-- scarf -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#8B6B5A"
+        android:strokeWidth="1.5"
+        android:pathData="M48,88 L54,82 L60,88" />
+
+</vector>
