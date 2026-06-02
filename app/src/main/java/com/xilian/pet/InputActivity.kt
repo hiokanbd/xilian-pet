@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.*
+import kotlin.concurrent.thread
 
 class InputActivity : Activity() {
 
