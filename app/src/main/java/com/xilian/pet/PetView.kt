@@ -103,7 +103,8 @@ class PetView(context: Context) : View(context) {
     var isChatting = false
     var freezeMode = false
     var wanderEnabled = true
-    var screenW = 1080  // set by service on init
+    var wanderBubblesOn = true
+    var screenW = 1080
     var screenH = 1920
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
@@ -327,7 +328,7 @@ class PetView(context: Context) : View(context) {
         val dx = (Math.cos(angle) * dist).toFloat()
         val dy = (Math.sin(angle) * dist).toFloat()
 
-        if (Math.random() < 0.25) speechText = wanderBubbles.random()
+        if (wanderBubblesOn && Math.random() < 0.25) speechText = wanderBubbles.random()
 
         var lastX = 0f; var lastY = 0f
         wanderAnimator = ValueAnimator.ofFloat(0f, 1f).apply {

@@ -75,9 +75,14 @@ class ControlActivity : Activity() {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         addView(TextView(this@ControlActivity).apply {
             text = "保持时游走"; setTextColor(0xFF8B7B6B.toInt()); textSize = 13f
-            setPadding(0, 0, dp(8), 0)
+            setPadding(0, 0, dp(6), 0)
         })
-        addView(smallBtn("开/关") { sendAction(FloatingPetService.ACTION_WANDER_TOGGLE) })
+        addView(smallBtn("开关") { sendAction(FloatingPetService.ACTION_WANDER_TOGGLE) })
+        addView(TextView(this@ControlActivity).apply {
+            text = "气泡"; setTextColor(0xFF8B7B6B.toInt()); textSize = 13f
+            setPadding(dp(6), 0, dp(6), 0)
+        })
+        addView(smallBtn("开关") { sendAction(FloatingPetService.ACTION_WANDER_BUBBLE_TOGGLE) })
     }
 
     // ── opacity ──

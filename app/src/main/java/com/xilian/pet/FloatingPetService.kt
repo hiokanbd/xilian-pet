@@ -185,6 +185,7 @@ class FloatingPetService : Service() {
             ACTION_RANDOM -> petView.randomAction()
             ACTION_OPACITY_POPUP -> showOpacityPopup()
             ACTION_WANDER_TOGGLE -> { petView.wanderEnabled = !petView.wanderEnabled; updateNotification() }
+            ACTION_WANDER_BUBBLE_TOGGLE -> { petView.wanderBubblesOn = !petView.wanderBubblesOn }
         }
         return START_STICKY
     }
@@ -416,6 +417,7 @@ class FloatingPetService : Service() {
         const val ACTION_RANDOM = "com.xilian.pet.RANDOM"
         const val ACTION_OPACITY_POPUP = "com.xilian.pet.OPACITY_POPUP"
         const val ACTION_WANDER_TOGGLE = "com.xilian.pet.WANDER_TOGGLE"
+        const val ACTION_WANDER_BUBBLE_TOGGLE = "com.xilian.pet.WANDER_BUBBLE_TOGGLE"
         const val DEFAULT_SIZE = 220
         const val MIN_WIN = 120
         const val MAX_WIN = 900
