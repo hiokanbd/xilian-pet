@@ -71,15 +71,39 @@ class ControlActivity : Activity() {
 
     // ── opacity ──
 
-    private fun opacityRow(): View = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        addView(TextView(this@ControlActivity).apply {
-            text = "透明度"; setTextColor(0xFF8B7B6B.toInt()); textSize = 14f
-            setPadding(0,0,dp(12),0)
-        })
-        addView(smallBtn("-") { sendAction(FloatingPetService.ACTION_OPACITY_DOWN) })
-        addView(smallBtn("+") { sendAction(FloatingPetService.ACTION_OPACITY_UP) })
-        addView(smallBtn("显/隐") { sendAction(FloatingPetService.ACTION_TOGGLE) })
+    private fun opacityRow(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        val label = TextView(this).apply {
+            text = "透明度 (100%)"; setTextColor(0xFF8B7B6B.toInt()); textSize = 14f
+            setPadding(0, 0, 0, dp(8))
+        }
+        row.addView(label)
+
+        val seek = SeekBar(this).apply {
+            max = 100; setPadding(dp(8), 0, dp(8), 0)
+            // default 100% — but we don't know current value from service easily
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser) {
+                        label.text = "透明度 ($progress%)"
+                        val intent = Intent(this@ControlActivity, FloatingPetService::class.java).apply {
+                            action = FloatingPetService.ACTION_SET_OPACITY
+                            putExtra("value", progress)
+                        }
+                        startService(intent)
+                    }
+                }
+                override fun onStartTrackingTouch(p0: SeekBar?) {}
+                override fun onStopTrackingTouch(p0: SeekBar?) {}
+            })
+        }
+        row.addView(seek)
+        row.addView(space(4))
+        row.addView(smallBtn("显/隐") { sendAction(FloatingPetService.ACTION_TOGGLE) })
+        return row
     }
 
     // ── image slot ──

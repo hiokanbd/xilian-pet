@@ -232,6 +232,9 @@ class PetView(context: Context) : View(context) {
         if (isChatting) return
         if (idleAction == action) { exitIdleAction(); return }
         exitIdleAction()
+        // reset ALL timers so the action gets its full duration
+        idleTimer = System.currentTimeMillis()
+        tierEnteredAt = System.currentTimeMillis()
         if (action == "read" || action == "shy") {
             idleTier = 1; idleAction = action
         } else if (action == "swing" || action == "sleep") {
@@ -515,6 +518,14 @@ class PetView(context: Context) : View(context) {
                 if (!touchHitPet) return false
                 touchStartTime = System.currentTimeMillis(); touchStartX = event.rawX; touchStartY = event.rawY
                 isDragging = false; isPinching = false
+                // if two fingers land simultaneously, enter pinch immediately
+                if (event.pointerCount >= 2) {
+                    isPinching = true
+                    prePinchSize = layoutParams?.width ?: 200
+                    pinchStartDist = fingerDist(event); pinchStartAngle = fingerAngle(event)
+                    pinchStartSize = minOf(layoutParams?.width?.toFloat() ?: 200f, layoutParams?.width?.toFloat() ?: 200f)
+                    pinchStartRotation = userRotation
+                }
                 if (idleTier == 0) cancelIdle()
                 idleTimer = System.currentTimeMillis()
                 performClick()
@@ -561,10 +572,10 @@ class PetView(context: Context) : View(context) {
                     isPinching = false
                     // detect zoom by comparing size before/after
                     val postSize = layoutParams?.width ?: 200
-                    val zoomed = kotlin.math.abs(postSize - prePinchSize) > 10
-                    if ((idleTier == 1 && zoomed) || idleTier == 2) {
-                        // tier1: exit on zoom; tier2: exit on any pinch attempt (size may not change much)
-                        if (zoomed || idleTier == 2) exitIdleAction()
+                    val zoomed = kotlin.math.abs(postSize - prePinchSize) > 5
+                    // tier1: exit on zoom; tier2: ANY two-finger gesture exits
+                    if ((idleTier == 1 && zoomed) || idleTier >= 2) {
+                        exitIdleAction()
                     }
                     onResizeEnd?.invoke()
                     idleTimer = System.currentTimeMillis()

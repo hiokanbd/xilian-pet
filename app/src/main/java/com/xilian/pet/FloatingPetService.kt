@@ -169,6 +169,10 @@ class FloatingPetService : Service() {
             ACTION_READ -> petView.toggleRead()
             ACTION_CONTROLS -> startActivity(Intent(this, ControlActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             ACTION_RELOAD_IMAGES -> loadAllImages()
+            ACTION_SET_OPACITY -> {
+                val pct = intent?.getIntExtra("value", 100) ?: 100
+                setOpacity(pct / 100f)
+            }
         }
         return START_STICKY
     }
@@ -216,6 +220,14 @@ class FloatingPetService : Service() {
         bubbleView.alpha = petView.petAlpha
         updateNotification()
     }
+
+    private fun setOpacity(value: Float) {
+        petView.petAlpha = value.coerceIn(0.1f, 1f)
+        bubbleView.alpha = petView.petAlpha
+        updateNotification()
+    }
+
+    fun getOpacityPct(): Int = (petView.petAlpha * 100).toInt()
 
     private fun buildNotification(): Notification {
         val toggleLabel = if (isPetVisible) "隐藏" else "显示"
@@ -304,6 +316,7 @@ class FloatingPetService : Service() {
         const val ACTION_READ = "com.xilian.pet.READ"
         const val ACTION_CONTROLS = "com.xilian.pet.CONTROLS"
         const val ACTION_RELOAD_IMAGES = "com.xilian.pet.RELOAD_IMAGES"
+        const val ACTION_SET_OPACITY = "com.xilian.pet.SET_OPACITY"
         const val DEFAULT_SIZE = 220
         const val MIN_WIN = 120
         const val MAX_WIN = 900
