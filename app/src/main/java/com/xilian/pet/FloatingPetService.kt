@@ -177,6 +177,9 @@ class FloatingPetService : Service() {
                 val msg = intent?.getStringExtra("message") ?: return START_STICKY
                 handleChat(msg)
             }
+            ACTION_FREEZE -> petView.toggleFreeze()
+            ACTION_RANDOM -> petView.randomAction()
+            ACTION_OPACITY_POPUP -> showOpacityPopup()
         }
         return START_STICKY
     }
@@ -263,13 +266,54 @@ class FloatingPetService : Service() {
         handler.postDelayed(bubbleFadeTask!!, 5000L)
     }
 
-    private fun buildNotification(): Notification {
-        val toggleLabel = if (isPetVisible) "隐藏" else "显示"
-        val swingLabel = if (petView.isSwingMode()) "停秋千" else "秋千"
-        val sleepLabel = if (petView.isSleepMode()) "醒来" else "睡觉"
-        val readLabel = if (petView.isReadMode()) "看完" else "看书"
+    private var opacityPopup: android.widget.PopupWindow? = null
 
+    private fun showOpacityPopup() {
+        val popupView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(16))
+            setBackgroundColor(0xFFF8F4F0.toInt())
+        }
+        val title = TextView(this).apply {
+            text = "透明度 (${getOpacityPct()}%)"
+            setTextColor(0xFF3A3028.toInt()); textSize = 16f
+            setPadding(0, 0, 0, dp(12))
+        }
+        popupView.addView(title)
+        val seek = android.widget.SeekBar(this).apply {
+            max = 100; progress = getOpacityPct()
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                    if (fromUser) {
+                        title.text = "透明度 ($p%)"
+                        setOpacity(p / 100f)
+                    }
+                }
+                override fun onStartTrackingTouch(p0: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(p0: android.widget.SeekBar?) {}
+            })
+        }
+        popupView.addView(seek)
+        val closeBtn = TextView(this).apply {
+            text = "关闭"; gravity = Gravity.CENTER
+            setTextColor(0xFFFFFFFF.toInt()); setBackgroundColor(0xFF8B6B5A.toInt())
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            setOnClickListener { opacityPopup?.dismiss() }
+        }
+        popupView.addView(closeBtn)
+
+        opacityPopup?.dismiss()
+        opacityPopup = android.widget.PopupWindow(popupView,
+            dp(280), android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            isTouchable = true; isFocusable = true
+            showAtLocation(petView, Gravity.CENTER, 0, 0)
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val freezeLabel = if (petView.isFrozen()) "结束" else "保持"
         val stateText = when {
+            petView.isFrozen() -> "已保持 · ${actionLabel()}"
             petView.isSwingMode() -> "荡秋千中…"
             petView.isSleepMode() -> "Zzz…"
             petView.isShyMode() -> "撒娇中~"
@@ -284,14 +328,26 @@ class FloatingPetService : Service() {
                 .setContentText(stateText)
                 .setOngoing(true)
                 .setPriority(Notification.PRIORITY_LOW)
-                .addAction(0, swingLabel, pendingIntent(ACTION_SWING))
-                .addAction(0, sleepLabel, pendingIntent(ACTION_SLEEP))
-                .addAction(0, readLabel, pendingIntent(ACTION_READ))
+                .addAction(0, "随机动作", pendingIntent(ACTION_RANDOM))
+                .addAction(0, freezeLabel, pendingIntent(ACTION_FREEZE))
+                .addAction(0, "透明度", pendingIntent(ACTION_OPACITY_POPUP))
                 .addAction(0, "控制", pendingIntent(ACTION_CONTROLS))
-                .addAction(0, toggleLabel, pendingIntent(
-                    if (isPetVisible) ACTION_HIDE else ACTION_SHOW
-                ))
                 .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("昔涟")
+                .setContentText(stateText)
+                .setOngoing(true)
+                .setPriority(Notification.PRIORITY_LOW)
+                .build()
+        }
+    }
+
+    private fun actionLabel() = when {
+        petView.isSwingMode() -> "荡秋千"; petView.isSleepMode() -> "睡觉"
+        petView.isShyMode() -> "撒娇"; petView.isReadMode() -> "看书"; else -> ""
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
@@ -352,6 +408,9 @@ class FloatingPetService : Service() {
         const val ACTION_RELOAD_IMAGES = "com.xilian.pet.RELOAD_IMAGES"
         const val ACTION_SET_OPACITY = "com.xilian.pet.SET_OPACITY"
         const val ACTION_CHAT = "com.xilian.pet.CHAT"
+        const val ACTION_FREEZE = "com.xilian.pet.FREEZE"
+        const val ACTION_RANDOM = "com.xilian.pet.RANDOM"
+        const val ACTION_OPACITY_POPUP = "com.xilian.pet.OPACITY_POPUP"
         const val DEFAULT_SIZE = 220
         const val MIN_WIN = 120
         const val MAX_WIN = 900

@@ -89,8 +89,9 @@ class PetView(context: Context) : View(context) {
     // two-tier idle system
     private var idleTier = 0       // 0=normal, 1=tier1(read/shy), 2=tier2(swing/sleep)
     private var idleAction = ""    // "read","shy","swing","sleep"
-    private var tierEnteredAt = 0L // timestamp when current tier was entered
+    private var tierEnteredAt = 0L
     var isChatting = false
+    var freezeMode = false  // when true, idle timer won't advance and action stays forever
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
     private var pinchDirChanges = 0
@@ -112,7 +113,8 @@ class PetView(context: Context) : View(context) {
     private var pinchStartRotation = 0f
     private var pinchStartSize = 0f
     private var touchHitPet = false
-    private var prePinchSize = 0  // pet size before pinch started
+    private var prePinchSize = 0
+    private var pinchHappened = false  // true if any resize occurred during pinch
     private var lastTapTime = 0L
     private var pendingSingleTap: Runnable? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -256,6 +258,22 @@ class PetView(context: Context) : View(context) {
     fun wakeUp() { if (idleAction == "sleep") exitIdleAction() }
     fun startRead() { forceAction("read") }
 
+    fun toggleFreeze() {
+        if (freezeMode) { freezeMode = false; exitIdleAction() }
+        else if (idleTier > 0) { freezeMode = true }
+    }
+
+    fun isFrozen(): Boolean = freezeMode
+
+    fun randomAction() {
+        val all = mutableListOf<String>()
+        if (stateBitmaps["read"] != null) all.add("read")
+        if (stateBitmaps["shy"] != null) all.add("shy")
+        if (stateBitmaps["swing0"] != null) all.add("swing")
+        if (stateBitmaps["sleep"] != null) all.add("sleep")
+        if (all.isNotEmpty()) forceAction(all.random())
+    }
+
     private fun exitIdleAction() {
         swingAnimator?.cancel(); swingAnimator = null
         swingFrameIndex = 0; swingOffsetX = 0f
@@ -274,7 +292,7 @@ class PetView(context: Context) : View(context) {
         idleCheckRunnable?.let { handler.removeCallbacks(it) }
         idleCheckRunnable = object : Runnable {
             override fun run() {
-                if (isChatting) { handler.postDelayed(this, 2000L); return }
+                if (isChatting || freezeMode) { handler.postDelayed(this, 2000L); return }
                 val elapsed = System.currentTimeMillis() - idleTimer
                 // tier progression
                 if (idleTier == 0) {
@@ -536,8 +554,8 @@ class PetView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.pointerCount == 2) {
-                    // enter pinch; record size before pinch for tier2 exit detection
-                    isPinching = true; isDragging = false
+                    // enter pinch; record size before pinch for exit detection
+                    isPinching = true; isDragging = false; pinchHappened = false
                     prePinchSize = layoutParams?.width ?: 200
                     pinchStartDist = fingerDist(event); pinchStartAngle = fingerAngle(event)
                     pinchStartSize = minOf(layoutParams?.width?.toFloat() ?: 200f, layoutParams?.width?.toFloat() ?: 200f)
@@ -551,16 +569,7 @@ class PetView(context: Context) : View(context) {
                     val newDist = fingerDist(event); val newAngle = fingerAngle(event)
                     val scale = newDist / pinchStartDist.coerceAtLeast(1f)
                     userRotation = pinchStartRotation + Math.toDegrees((newAngle - pinchStartAngle).toDouble()).toFloat()
-                    // track zoom direction changes for auto-shy
-                    val distDelta = newDist - lastPinchDist
-                    if (distDelta > 15f && pinchDir != 1) {
-                        if (pinchDir == -1) pinchDirChanges++
-                        pinchDir = 1 // zooming out
-                    } else if (distDelta < -15f && pinchDir != -1) {
-                        if (pinchDir == 1) pinchDirChanges++
-                        pinchDir = -1 // zooming in
-                    }
-                    lastPinchDist = newDist
+                    if (kotlin.math.abs(newDist - pinchStartDist) > 5f) pinchHappened = true
                     onResize?.invoke(scale)
                 } else if (!isPinching && event.pointerCount == 1) {
                     val dx = event.rawX - touchStartX; val dy = event.rawY - touchStartY
@@ -572,31 +581,28 @@ class PetView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_UP -> {
                 if (!touchHitPet) return true
-                if (isPinching) {
+                if (isPinching || pinchHappened) {
                     isPinching = false
-                    // detect zoom by comparing size before/after
-                    val postSize = layoutParams?.width ?: 200
-                    val zoomed = kotlin.math.abs(postSize - prePinchSize) > 5
-                    // tier1: exit on zoom; tier2: ANY two-finger gesture exits
-                    if ((idleTier == 1 && zoomed) || idleTier >= 2) {
+                    // tier1: exit on actual zoom; tier2: ANY two-finger attempt exits
+                    if ((idleTier == 1 && pinchHappened) || idleTier >= 2) {
                         exitIdleAction()
                     }
+                    pinchHappened = false
                     onResizeEnd?.invoke()
                     idleTimer = System.currentTimeMillis()
                 }
                 else if (isDragging) {
                     isDragging = false
-                    if (idleTier == 1) exitIdleAction()  // drag exits tier 1 only
+                    if (idleTier == 1) exitIdleAction()
                     idleTimer = System.currentTimeMillis()
                 }
                 else if (idleTier > 0) {
-                    // tap during idle → action-specific bubble
                     actionBubble()?.let { speechText = it }
                 }
                 else handleTap()
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                if (isPinching && event.pointerCount <= 2) { isPinching = false; idleTimer = System.currentTimeMillis() }
+                // don't reset isPinching here — ACTION_UP handles it
             }
         }
         return true
