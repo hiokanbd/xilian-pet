@@ -221,45 +221,6 @@ class PetView(context: Context) : View(context) {
         }
     }
 
-    fun toggleSwing() {
-        if (swingMode) stopSwing() else startSwing()
-    }
-
-    fun startSwing() {
-        if (isChatting) return
-        val hasAll = stateBitmaps["swing0"] != null && stateBitmaps["swing1"] != null && stateBitmaps["swing2"] != null
-        if (!hasAll || swingMode) return
-        swingMode = true; swingAnimRunning = false
-        cancelIdle()
-        // clean pendulum: left→middle→right→middle
-        val seq = intArrayOf(0, 1, 2, 1, 0, 1, 2, 1)
-        applySwingOffset(0)
-        var step = 0
-        swingAnimator = ValueAnimator.ofInt(0, seq.size - 1).apply {
-            duration = 500L * seq.size
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.RESTART
-            addUpdateListener {
-                val idx = seq[it.animatedValue as Int]
-                swingFrameIndex = idx; applySwingOffset(idx); invalidate()
-            }
-            start()
-        }
-        onSwingStateChanged?.invoke(true)
-        idleTimer = System.currentTimeMillis()
-    }
-
-    fun stopSwing() {
-        swingMode = false
-        swingAnimator?.cancel()
-        swingAnimator = null
-        swingFrameIndex = 0
-        swingOffsetX = 0f
-        onSwingStateChanged?.invoke(false)
-        idleTimer = System.currentTimeMillis()
-        invalidate()
-    }
-
     fun isSwingMode(): Boolean = idleAction == "swing"
     fun isSleepMode(): Boolean = idleAction == "sleep"
     fun isShyMode(): Boolean = idleAction == "shy"
