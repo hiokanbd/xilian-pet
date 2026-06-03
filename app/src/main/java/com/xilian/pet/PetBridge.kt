@@ -159,6 +159,7 @@ class PetBridge(
                     val body = JSONObject().apply {
                         put("message", text)
                         put("user_id", "hezi")
+                        put("fast", true)
                     }.toString()
                     conn.outputStream.write(body.toByteArray())
 
