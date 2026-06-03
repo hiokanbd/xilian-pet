@@ -112,6 +112,7 @@ class PetView(context: Context) : View(context) {
     private var pinchStartRotation = 0f
     private var pinchStartSize = 0f
     private var touchHitPet = false
+    private var prePinchSize = 0  // pet size before pinch started
     private var lastTapTime = 0L
     private var pendingSingleTap: Runnable? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -520,8 +521,9 @@ class PetView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.pointerCount == 2) {
-                    // enter pinch immediately on second finger (no 180ms delay)
+                    // enter pinch; record size before pinch for tier2 exit detection
                     isPinching = true; isDragging = false
+                    prePinchSize = layoutParams?.width ?: 200
                     pinchStartDist = fingerDist(event); pinchStartAngle = fingerAngle(event)
                     pinchStartSize = minOf(layoutParams?.width?.toFloat() ?: 200f, layoutParams?.width?.toFloat() ?: 200f)
                     pinchStartRotation = userRotation
@@ -557,7 +559,13 @@ class PetView(context: Context) : View(context) {
                 if (!touchHitPet) return true
                 if (isPinching) {
                     isPinching = false
-                    if (idleTier > 0) exitIdleAction()  // pinch exits any tier
+                    // detect zoom by comparing size before/after
+                    val postSize = layoutParams?.width ?: 200
+                    val zoomed = kotlin.math.abs(postSize - prePinchSize) > 10
+                    if ((idleTier == 1 && zoomed) || idleTier == 2) {
+                        // tier1: exit on zoom; tier2: exit on any pinch attempt (size may not change much)
+                        if (zoomed || idleTier == 2) exitIdleAction()
+                    }
                     onResizeEnd?.invoke()
                     idleTimer = System.currentTimeMillis()
                 }
