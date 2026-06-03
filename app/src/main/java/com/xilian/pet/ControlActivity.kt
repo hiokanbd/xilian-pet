@@ -36,6 +36,10 @@ class ControlActivity : Activity() {
         card.addView(opacityRow())
         card.addView(space(20))
 
+        card.addView(sectionTitle("后端"))
+        card.addView(backendUrlRow())
+        card.addView(space(20))
+
         card.addView(sectionTitle("换装"))
         card.addView(subtitle("点击选择图片，至少需设 睁眼/半睁/闭眼"))
         card.addView(space(8))
@@ -69,6 +73,40 @@ class ControlActivity : Activity() {
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3),0,dp(3),0) })
             }
         }
+    }
+
+    private fun backendUrlRow(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        row.addView(TextView(this).apply {
+            text = "Agent 后端地址"; setTextColor(0xFF8B7B6B.toInt()); textSize = 12f
+        })
+        val prefs = getSharedPreferences("xilian_pet", MODE_PRIVATE)
+        val currentUrl = prefs.getString("backend_url", PetBridge.backendUrl) ?: PetBridge.backendUrl
+        val input = EditText(this).apply {
+            setText(currentUrl)
+            setTextColor(0xFF3A3028.toInt()); textSize = 14f
+            setBackgroundColor(0xFFF0EBE4.toInt())
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            hint = "http://127.0.0.1:8000"
+        }
+        row.addView(input)
+        row.addView(space(4))
+        row.addView(smallBtn("保存") {
+            val url = input.text.toString().trim()
+            if (url.isNotBlank()) {
+                prefs.edit().putString("backend_url", url).apply()
+                PetBridge.backendUrl = url
+            }
+        })
+        row.addView(TextView(this).apply {
+            text = "默认 http://127.0.0.1:8000，可改为自建 agent 地址"
+            setTextColor(0xFFA09080.toInt()); textSize = 11f
+            setPadding(0, dp(4), 0, 0)
+        })
+        return row
     }
 
     private fun wanderRow(): View = LinearLayout(this).apply {

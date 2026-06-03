@@ -38,6 +38,11 @@ class FloatingPetService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createNotificationChannel()
 
+        // load saved backend URL
+        val prefs = getSharedPreferences("xilian_pet", MODE_PRIVATE)
+        val savedUrl = prefs.getString("backend_url", null)
+        if (!savedUrl.isNullOrBlank()) PetBridge.backendUrl = savedUrl
+
         // ── pet view ──
         petView = PetView(this)
         val dm = resources.displayMetrics

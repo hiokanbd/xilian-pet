@@ -133,8 +133,10 @@ class PetBridge(
 
     companion object {
         const val BRIDGE_PORT = 28765
-        const val AGENT_PORT = 8000
+        var backendUrl = "http://127.0.0.1:8000"
         private const val TAG = "PetBridge"
+
+        private fun agentBaseUrl(): String = backendUrl.trimEnd('/')
 
         /**
          * SSE streaming chat — connects to xilian-agent API on port 8000.
@@ -148,7 +150,7 @@ class PetBridge(
         ) {
             thread {
                 try {
-                    val url = URL("http://127.0.0.1:$AGENT_PORT/api/chat/stream")
+                    val url = URL("${agentBaseUrl()}/api/chat/stream")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.doOutput = true
@@ -188,7 +190,7 @@ class PetBridge(
         fun sendToTermux(text: String, callback: ((String) -> Unit)? = null) {
             thread {
                 try {
-                    val url = URL("http://127.0.0.1:$AGENT_PORT/api/chat")
+                    val url = URL("${agentBaseUrl()}/api/chat")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.doOutput = true
