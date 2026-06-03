@@ -80,7 +80,7 @@ class ControlActivity : Activity() {
             FloatingPetService.wanderOn = !FloatingPetService.wanderOn
             recreate()
         })
-        addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(8), 0) })
+        addView(View(this@ControlActivity).apply { layoutParams = LinearLayout.LayoutParams(dp(8), 0) })
         addView(smallBtn(bLabel) {
             sendAction(FloatingPetService.ACTION_WANDER_BUBBLE_TOGGLE)
             FloatingPetService.wanderBubbleOn = !FloatingPetService.wanderBubbleOn
