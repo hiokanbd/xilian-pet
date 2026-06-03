@@ -386,6 +386,9 @@ class PetView(context: Context) : View(context) {
         val baseR = minOf(width, height) * 0.26f
         val r = baseR * stretchScale
 
+        val layerAlpha = (petAlpha * 255).toInt()
+        canvas.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), layerAlpha)
+
         val bmp = currentBitmap()
         if (bmp != null) {
             canvas.save()
@@ -418,6 +421,7 @@ class PetView(context: Context) : View(context) {
             canvas.restore()
         }
 
+        canvas.restore() // close saveLayerAlpha
     }
 
     private fun drawHair(canvas: Canvas, cx: Float, cy: Float, r: Float) {
