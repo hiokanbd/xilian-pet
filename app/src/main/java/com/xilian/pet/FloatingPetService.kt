@@ -348,16 +348,6 @@ class FloatingPetService : Service() {
     private fun actionLabel() = when {
         petView.isSwingMode() -> "荡秋千"; petView.isSleepMode() -> "睡觉"
         petView.isShyMode() -> "撒娇"; petView.isReadMode() -> "看书"; else -> ""
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("昔涟")
-                .setContentText(stateText)
-                .setOngoing(true)
-                .setPriority(Notification.PRIORITY_LOW)
-                .build()
-        }
     }
 
     private fun updateNotification() {
