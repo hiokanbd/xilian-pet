@@ -127,15 +127,14 @@ class FloatingPetService : Service() {
     }
 
     private fun updateBubble(text: String?) {
-        handler.removeCallbacks(bubbleFadeTask ?: return)
+        bubbleFadeTask?.let { handler.removeCallbacks(it) }
         if (text.isNullOrEmpty()) {
             bubbleView.visibility = View.GONE
             return
         }
         bubbleView.text = text
         bubbleView.visibility = View.VISIBLE
-        positionBubble()
-        // schedule fade
+        bubbleView.post { positionBubble() }
         if (!petView.isChatting) {
             bubbleFadeTask = Runnable { bubbleView.visibility = View.GONE }
             handler.postDelayed(bubbleFadeTask!!, 4000L)

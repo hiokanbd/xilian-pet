@@ -170,7 +170,7 @@ class PetView(context: Context) : View(context) {
     // ── swing animation ──
 
     private fun applySwingOffset(idx: Int) {
-        val baseR = minOf(width, height) * 0.38f
+        val baseR = minOf(width, height) * 0.26f
         swingOffsetX = when (idx) {
             0 -> -baseR * 0.35f  // left
             1 -> 0f              // center
@@ -410,7 +410,7 @@ class PetView(context: Context) : View(context) {
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = height / 2f
-        val baseR = minOf(width, height) * 0.38f
+        val baseR = minOf(width, height) * 0.26f
         val r = baseR * stretchScale
 
         val bmp = currentBitmap()
