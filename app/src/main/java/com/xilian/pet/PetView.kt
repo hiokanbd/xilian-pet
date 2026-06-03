@@ -22,12 +22,14 @@ class PetView(context: Context) : View(context) {
     var onDrag: ((Float, Float) -> Unit)? = null
     var onResize: ((Float) -> Unit)? = null
     var onResizeEnd: (() -> Unit)? = null
+    var onSpeechChanged: ((String?) -> Unit)? = null
 
     var expression = Expression.NEUTRAL
         set(value) { field = value; invalidate() }
     var speechText: String? = null
         set(value) {
-            field = value; bubbleAlpha = 1f; invalidate()
+            field = value
+            onSpeechChanged?.invoke(value)
             if (!isChatting) scheduleBubbleFade()
         }
 
@@ -92,7 +94,8 @@ class PetView(context: Context) : View(context) {
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
     private var pinchDirChanges = 0
-    private var lastPinchScale = 1f
+    private var lastPinchDist = 0f
+    private var pinchDir = 0  // 0=none, 1=zooming in, -1=zooming out
 
     var onSwingStateChanged: ((Boolean) -> Unit)? = null
     var onSleepStateChanged: ((Boolean) -> Unit)? = null
@@ -210,13 +213,16 @@ class PetView(context: Context) : View(context) {
         swingMode = true; swingAnimRunning = false
         cancelIdle()
         // clean pendulum: left→middle→right→middle
-        val seq = intArrayOf(0, 1, 2, 1)
+        val seq = intArrayOf(0, 1, 2, 1, 0, 1, 2, 1)
         applySwingOffset(0)
-        swingAnimator = ValueAnimator.ofInt(0, Int.MAX_VALUE).apply {
-            duration = 500L * Int.MAX_VALUE
+        var step = 0
+        swingAnimator = ValueAnimator.ofInt(0, seq.size - 1).apply {
+            duration = 500L * seq.size
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
             addUpdateListener {
-                val idx = (it.animatedValue as Int) % seq.size
-                swingFrameIndex = seq[idx]; applySwingOffset(seq[idx]); invalidate()
+                val idx = seq[it.animatedValue as Int]
+                swingFrameIndex = idx; applySwingOffset(idx); invalidate()
             }
             start()
         }
@@ -439,7 +445,6 @@ class PetView(context: Context) : View(context) {
             canvas.restore()
         }
 
-        drawSpeechBubble(canvas, cx, cy - r * stretchScale - 20f)
     }
 
     private fun drawHair(canvas: Canvas, cx: Float, cy: Float, r: Float) {
@@ -523,33 +528,6 @@ class PetView(context: Context) : View(context) {
         canvas.drawLine(cx, top - 4f, cx + bw * 0.25f, top + 2f, p)
     }
 
-    private fun drawSpeechBubble(canvas: Canvas, px: Float, py: Float) {
-        if (speechText.isNullOrEmpty() || bubbleAlpha <= 0.01f) return
-        val text = speechText ?: return
-        val maxWidth = 380f; val padding = 24f; val lineHeight = 38f
-        val lines = mutableListOf<String>()
-        var remaining = text
-        while (remaining.isNotEmpty()) {
-            val measured = textPaint.breakText(remaining, true, maxWidth - padding * 2, null)
-            if (measured == 0) break
-            lines.add(remaining.take(measured)); remaining = remaining.drop(measured)
-        }
-        val bubbleW = minOf(maxWidth, lines.maxOfOrNull { textPaint.measureText(it) } ?: 100f) + padding * 2
-        val bubbleH = lines.size * lineHeight + padding * 2
-        val bx = (width / 2f) - bubbleW / 2f; val by = py - bubbleH - 16f
-
-        canvas.save(); canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat()); canvas.translate(bx, by)
-        bubblePaint.alpha = (bubbleAlpha * 255).toInt(); bubbleStroke.alpha = (bubbleAlpha * 255).toInt()
-        textPaint.alpha = (bubbleAlpha * 255).toInt()
-        val rect = RectF(0f, 0f, bubbleW, bubbleH)
-        canvas.drawRoundRect(rect, 18f, 18f, bubblePaint); canvas.drawRoundRect(rect, 18f, 18f, bubbleStroke)
-        val triPath = Path(); triPath.moveTo(bubbleW / 2f - 10f, bubbleH); triPath.lineTo(bubbleW / 2f, bubbleH + 14f)
-        triPath.lineTo(bubbleW / 2f + 10f, bubbleH); triPath.close()
-        canvas.drawPath(triPath, bubblePaint); canvas.drawPath(triPath, bubbleStroke)
-        lines.forEachIndexed { i, line -> canvas.drawText(line, bubbleW / 2f, padding + lineHeight * (i + 0.7f), textPaint) }
-        canvas.restore()
-    }
-
     // ── touch ──
 
     private fun hitTest(rawX: Float, rawY: Float): Boolean {
@@ -580,7 +558,7 @@ class PetView(context: Context) : View(context) {
                     pinchStartDist = fingerDist(event); pinchStartAngle = fingerAngle(event)
                     pinchStartSize = minOf(layoutParams?.width?.toFloat() ?: 200f, layoutParams?.width?.toFloat() ?: 200f)
                     pinchStartRotation = userRotation
-                    pinchDirChanges = 0; lastPinchScale = 1f
+                    pinchDirChanges = 0; lastPinchDist = pinchStartDist; pinchDir = 0
                     pendingSingleTap?.let { handler.removeCallbacks(it) }
                 }
             }
@@ -591,9 +569,15 @@ class PetView(context: Context) : View(context) {
                     val scale = newDist / pinchStartDist.coerceAtLeast(1f)
                     userRotation = pinchStartRotation + Math.toDegrees((newAngle - pinchStartAngle).toDouble()).toFloat()
                     // track zoom direction changes for auto-shy
-                    if (scale > lastPinchScale * 1.08f) { /* zoom out */ }
-                    else if (scale < lastPinchScale * 0.92f && lastPinchScale > 1.08f) pinchDirChanges++
-                    lastPinchScale = scale
+                    val distDelta = newDist - lastPinchDist
+                    if (distDelta > 15f && pinchDir != 1) {
+                        if (pinchDir == -1) pinchDirChanges++
+                        pinchDir = 1 // zooming out
+                    } else if (distDelta < -15f && pinchDir != -1) {
+                        if (pinchDir == 1) pinchDirChanges++
+                        pinchDir = -1 // zooming in
+                    }
+                    lastPinchDist = newDist
                     onResize?.invoke(scale)
                 } else if (!isPinching && event.pointerCount == 1) {
                     val dx = event.rawX - touchStartX; val dy = event.rawY - touchStartY
