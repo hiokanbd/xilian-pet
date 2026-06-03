@@ -90,10 +90,10 @@ canvas { display:block; position:absolute; top:0; left:0; }
   <button id="toggleBtn" onclick="toggleVisible()">隐藏</button>
   <button onclick="randomBubble()">戳</button>
   <button onclick="showDialog()">聊</button>
-  <button id="swingBtn" onclick="toggleSwing()">秋千</button>
-  <button id="sleepBtn" onclick="toggleSleep()">睡觉</button>
-  <button id="shyBtn" onclick="triggerShy()">撒娇</button>
-  <button id="readBtn" onclick="toggleRead()">看书</button>
+  <button id="swingBtn" onclick="forceAction('swing')">秋千</button>
+  <button id="sleepBtn" onclick="forceAction('sleep')">睡觉</button>
+  <button id="shyBtn" onclick="forceAction('shy')">撒娇</button>
+  <button id="readBtn" onclick="forceAction('read')">看书</button>
   <button onclick="showSettings()">换装</button>
   <span id="imgStatus" style="font-size:10px;opacity:0.6"></span>
   <span style="font-size:10px;opacity:0.4;margin-left:auto;">拖移 | 缩放 | 旋转 | 单击 | 双击</span>
@@ -121,19 +121,21 @@ let expression = 'NEUTRAL';
 let swayOff = 0, stretchScale = 1, turnAngle = 0, userRotation = 0;
 let blinkFrameIdx = 0, blinkRunning = false;
 let swingFrameIdx = 0, swingRunning = false;
-let swingMode = false;
+// ── two-tier idle system ──
+let idleTier = 0;           // 0=normal, 1=tier1(read/shy), 2=tier2(swing/sleep)
+let idleAction = '';        // current action: 'read','shy','swing','sleep'
 let swingOffsetX = 0;
 let swingInterval = null;
-let sleepMode = false;    // sleeping state
-let shyMode = false;      // shy/sweet state
-let shyTimer = null;
-let sleepTimer = null;
-let readMode = false;    // reading state (continuous like swing)
-let chatting = false;    // true during chat streaming, blocks idle state changes
+let chatting = false;
+let idleCheckInterval = null;
 let lastInteraction = Date.now();
-let pinchDirChanges = 0;  // count direction reversals during pinch
-let lastPinchScale = 1;
 let bubbleText = '', bubbleAlpha = 0, bubbleTimer = null;
+
+// action-specific bubbles
+const readBubbles = ["人家正在看书呢…", "这本书很有意思呢…", "嘘…别吵…", "等人家看完这一页…"];
+const shyBubbles = ["哼，不理你了…", "别这样盯着人家看啦…", "人家害羞了…", "真是的…"];
+const swingBubbles = ["呼~好舒服…", "荡秋千真开心…", "再高一点…", "风吹得人真舒服…"];
+const sleepBubbles = ["呼…别打扰人家…", "好困…让睡一会儿嘛…", "Zzz…嗯…伙伴？", "人家正在梦里跟你聊天呢…", "再睡五分钟…", "不要摇人家啦…"];
 
 // image slots — each expression maps to an Image or null
 const STATE_KEYS = ['open', 'half', 'closed', 'sleep', 'shy', 'read', 'swing0', 'swing1', 'swing2'];
@@ -184,19 +186,14 @@ resizeCanvas();
 // ── get current display image ──
 
 function getCurrentImage() {
-  if (swingMode || swingRunning) {
+  if (idleAction === 'swing') {
     const keys = ['swing0', 'swing1', 'swing2'];
     return petStates[keys[swingFrameIdx]] || petStates.open || null;
   }
-  if (readMode && petStates.read) return petStates.read;
-  if (sleepMode && petStates.sleep) return petStates.sleep;
-  if (shyMode && petStates.shy) return petStates.shy;
-  if (blinkRunning || expression === 'NEUTRAL') {
-    return petStates.open || null;
-  }
-  const map = { SLEEPY:'sleep', BLUSH:'shy', SHY:'shy', HAPPY:'open', THINKING:'open' };
-  const key = map[expression] || 'open';
-  return petStates[key] || petStates.open || null;
+  if (idleAction === 'sleep' && petStates.sleep) return petStates.sleep;
+  if (idleAction === 'read' && petStates.read) return petStates.read;
+  if (idleAction === 'shy' && petStates.shy) return petStates.shy;
+  return petStates.open || null;
 }
 
 // ── drawing ──
@@ -274,43 +271,73 @@ function drawBubble() {
   bubble.style.top = Math.max(10, petY - petR - 100) + 'px';
 }
 
-// ── animations ──
+// ── two-tier idle system ──
 
-let idleTimer = Date.now();
 function idleLoop() {
-  const elapsed = Date.now() - idleTimer;
-  if (elapsed > 10000 && Math.random() < 0.3) playRandomIdle();
-  else if (elapsed > 6000 && Math.random() < 0.15) playRandomIdle();
-  checkInactivityTriggers();
+  if (chatting || idleTier > 0) { setTimeout(idleLoop, 2000); return; }
+  const elapsed = Date.now() - lastInteraction;
+  if (elapsed > 60000) {
+    // tier 2: swing or sleep
+    enterTier2();
+  } else if (elapsed > 30000) {
+    // tier 1: read or shy
+    enterTier1();
+  } else {
+    // normal: just blink occasionally
+    if (Math.random() < 0.2) blinkAnim();
+  }
   setTimeout(idleLoop, 2000);
 }
 setTimeout(idleLoop, 4000);
 
-function playRandomIdle() {
-  if (sleepMode || shyMode || readMode || swingMode || chatting) return;
-  idleTimer = Date.now();
-  const hasRead = !!petStates.read;
-  const total = 4 + (hasRead ? 1 : 0);
-  const n = Math.floor(Math.random() * total);
-  if (n < 4) {
-    if (n === 0) swayAnim();
-    else if (n === 1) blinkAnim();
-    else if (n === 2) stretchAnim();
-    else turnAnim();
-  } else {
-    startRead();
-  }
+function enterTier1() {
+  if (idleTier >= 1 || chatting) return;
+  const options = [];
+  if (petStates.read) options.push('read');
+  if (petStates.shy) options.push('shy');
+  if (options.length === 0) return;
+  idleAction = options[Math.floor(Math.random() * options.length)];
+  idleTier = 1;
+  draw();
 }
 
-// swing and sleep trigger after 60s inactivity
-function checkInactivityTriggers() {
-  if (chatting) return;
-  const elapsed = Date.now() - lastInteraction;
-  if (elapsed > 60000 && !swingMode && !sleepMode && !readMode && !shyMode) {
-    const hasSwing = petStates.swing0 && petStates.swing1 && petStates.swing2;
-    if (hasSwing && Math.random() < 0.5) startSwing();
-    else enterSleep();
+function enterTier2() {
+  if (idleTier >= 2 || chatting) return;
+  const options = [];
+  if (petStates.swing0 && petStates.swing1 && petStates.swing2) options.push('swing');
+  if (petStates.sleep) options.push('sleep');
+  if (options.length === 0) return;
+  idleAction = options[Math.floor(Math.random() * options.length)];
+  idleTier = 2;
+  if (idleAction === 'swing') {
+    // start continuous swing
+    const seq = [0, 1, 2, 1];
+    let step = 0;
+    swingFrameIdx = 0; applySwingOffset(0);
+    if (swingInterval) clearInterval(swingInterval);
+    swingInterval = setInterval(() => {
+      step = (step + 1) % seq.length;
+      swingFrameIdx = seq[step]; applySwingOffset(swingFrameIdx); draw();
+    }, 500);
   }
+  draw();
+}
+
+function exitIdleAction() {
+  if (swingInterval) { clearInterval(swingInterval); swingInterval = null; }
+  swingFrameIdx = 0; swingOffsetX = 0;
+  idleTier = 0; idleAction = '';
+  lastInteraction = Date.now();
+  draw();
+}
+
+function idleActionBubble() {
+  const bubbles = {
+    read: readBubbles, shy: shyBubbles,
+    swing: swingBubbles, sleep: sleepBubbles
+  };
+  const pool = bubbles[idleAction];
+  if (pool) showBubble(pool[Math.floor(Math.random() * pool.length)]);
 }
 
 function swayAnim() {
@@ -386,59 +413,34 @@ function stopSwing() {
 
 function onUserInteract() {
   lastInteraction = Date.now();
-  if (swingMode) stopSwing();
-  if (readMode) stopRead();
-  if (shyMode) clearShy();
-  resetSleepTimer();
-}
-
-function resetSleepTimer() {
-  clearTimeout(sleepTimer);
-  sleepTimer = setTimeout(() => {
-    if (!sleepMode && !swingMode && !shyMode) enterSleep();
-  }, 60000); // 1 minute
-}
-
-function enterSleep() {
-  sleepMode = true;
-  document.getElementById('sleepBtn').textContent = '醒来';
-  document.getElementById('imgStatus').textContent = 'Zzz...';
-  draw();
-}
-
-function wakeUp() {
-  sleepMode = false;
-  document.getElementById('sleepBtn').textContent = '睡觉';
-  document.getElementById('imgStatus').textContent = '默认';
-  draw();
-}
-
-function toggleSleep() {
   if (chatting) return;
-  if (sleepMode) { wakeUp(); resetSleepTimer(); }
-  else { clearTimeout(sleepTimer); enterSleep(); }
+  // touch during idle actions is handled separately (tap→bubble, drag/pinch→exit)
 }
 
-function triggerShy() {
+// manual buttons: force enter the action
+function forceAction(action) {
   if (chatting) return;
-  if (shyMode) { clearShy(); return; }
-  if (sleepMode) wakeUp();
-  shyMode = true;
-  document.getElementById('shyBtn').textContent = '好啦';
-  document.getElementById('imgStatus').textContent = '撒娇中~';
-  draw();
-  clearTimeout(shyTimer);
-  shyTimer = setTimeout(() => clearShy(), 3000); // auto-clear after 3s
-}
-
-function clearShy() {
-  shyMode = false;
-  clearTimeout(shyTimer);
-  document.getElementById('shyBtn').textContent = '撒娇';
-  if (document.getElementById('imgStatus').textContent === '撒娇中~') {
-    document.getElementById('imgStatus').textContent = '默认';
+  if (idleAction === action) { exitIdleAction(); return; }
+  exitIdleAction();
+  if (action === 'read' || action === 'shy') {
+    idleTier = 1; idleAction = action; draw();
+  } else if (action === 'swing' || action === 'sleep') {
+    enterTier2();
+    // override random choice with the requested one
+    if (petStates[action] || (action === 'swing' && petStates.swing0)) {
+      idleTier = 2; idleAction = action;
+      if (action === 'swing') {
+        const seq = [0, 1, 2, 1]; let step = 0;
+        swingFrameIdx = 0; applySwingOffset(0);
+        if (swingInterval) clearInterval(swingInterval);
+        swingInterval = setInterval(() => {
+          step = (step + 1) % seq.length;
+          swingFrameIdx = seq[step]; applySwingOffset(swingFrameIdx); draw();
+        }, 500);
+      }
+      draw();
+    }
   }
-  draw();
 }
 function stretchAnim() {
   let t = 0; const a = setInterval(() => { stretchScale = 1+Math.sin(t++*0.15)*0.05; draw(); if (t>40) { clearInterval(a); stretchScale=1; draw(); } }, 16);
@@ -691,14 +693,16 @@ canvas.addEventListener('touchend', e => {
   if (!touchState.hitPet) return;
   if (touchState.pinching) {
     touchState.pinching = false;
-    // pinch wakes up sleeping pet
-    if (sleepMode) wakeUp();
-    // auto-shy: one direction reversal (zoom in→out or out→in) triggers shy
-    if (pinchDirChanges >= 1) triggerShy();
-    idleTimer = Date.now(); return;
+    if (idleTier > 0) exitIdleAction();  // pinch exits any tier
+    lastInteraction = Date.now(); return;
   }
-  if (touchState.dragging) { touchState.dragging = false; idleTimer = Date.now(); return; }
-  if (sleepMode) { sleepyBubble(); return; } // tap in sleep → sleepy message
+  if (touchState.dragging) {
+    touchState.dragging = false;
+    if (idleTier === 1) exitIdleAction();  // drag exits tier 1 only
+    lastInteraction = Date.now(); return;
+  }
+  if (idleTier > 0) { idleActionBubble(); return; }
+  if (chatting) return;
   const now = Date.now();
   if (now - touchState.lastTap < 350) { clearTimeout(touchState.pendingTap); touchState.lastTap = 0; showDialog(); }
   else { touchState.lastTap = now; touchState.pendingTap = setTimeout(() => randomBubble(), 360); }
@@ -711,7 +715,7 @@ let mouseDown = false, mouseDrag = false;
 canvas.addEventListener('mousedown', e => {
   if (!hitTest(e.clientX, e.clientY)) return;
   mouseDown = true; mouseDrag = false;
-  onUserInteract();
+  lastInteraction = Date.now();
   touchState.startTime = Date.now(); touchState.startX = e.clientX; touchState.startY = e.clientY;
   touchState.startPetX = petX; touchState.startPetY = petY; touchState.lastTap = 0;
 });
@@ -722,8 +726,8 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('mouseup', e => {
   mouseDown = false;
-  if (sleepMode) { sleepyBubble(); return; }
-  if (!mouseDrag) randomBubble(); else idleTimer = Date.now();
+  if (idleTier > 0) { idleActionBubble(); return; }
+  if (!mouseDrag) randomBubble(); else lastInteraction = Date.now();
 });
 canvas.addEventListener('wheel', e => { petR = Math.max(30,Math.min(300,petR-e.deltaY*0.2)); draw(); e.preventDefault(); }, { passive: false });
 

@@ -86,11 +86,10 @@ class PetView(context: Context) : View(context) {
     private var swingAnimRunning = false // brief idle swing
     private var swingAnimator: ValueAnimator? = null
 
-    // sleep / shy / read state
-    private var sleepMode = false
-    private var shyMode = false
-    private var readMode = false
-    var isChatting = false  // blocks idle state changes during chat streaming
+    // two-tier idle system
+    private var idleTier = 0       // 0=normal, 1=tier1(read/shy), 2=tier2(swing/sleep)
+    private var idleAction = ""    // "read","shy","swing","sleep"
+    var isChatting = false
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
     private var pinchDirChanges = 0
@@ -128,37 +127,7 @@ class PetView(context: Context) : View(context) {
         "人家正在梦里跟你聊天呢…", "再睡五分钟…", "不要摇人家啦…"
     )
 
-    init { startIdleLoop(); resetSleepTimer() }
-
-    // ── idle loop ──
-
-    private fun startIdleLoop() {
-        idleTimer = System.currentTimeMillis()
-        handler.postDelayed(idleTick, 4000L)
-    }
-
-    private val idleTick = object : Runnable {
-        override fun run() {
-            val elapsed = System.currentTimeMillis() - idleTimer
-            if (elapsed > 12000L) playRandomIdle()
-            else if (elapsed > 6000L && Math.random() < 0.3) playRandomIdle()
-            handler.postDelayed(this, 2000L)
-        }
-    }
-
-    private fun playRandomIdle() {
-        if (swingMode || sleepMode || shyMode || readMode || isChatting) return
-        idleTimer = System.currentTimeMillis()
-        val hasRead = stateBitmaps["read"] != null
-        val total = 4 + (if (hasRead) 1 else 0)
-        val n = (Math.random() * total).toInt()
-        when {
-            n < 4 -> when (n) {
-                0 -> animateSway(); 1 -> animateBlink(); 2 -> animateStretch(); 3 -> animateTurn()
-            }
-            else -> startRead()
-        }
-    }
+    init { startIdleCheck() }
 
     private fun cancelIdle() {
         currentIdleAnim?.cancel()
@@ -167,7 +136,57 @@ class PetView(context: Context) : View(context) {
         invalidate()
     }
 
+    private fun enterTier1() {
+        if (idleTier >= 1 || isChatting) return
+        val options = mutableListOf<String>()
+        if (stateBitmaps["read"] != null) options.add("read")
+        if (stateBitmaps["shy"] != null) options.add("shy")
+        if (options.isEmpty()) return
+        idleAction = options.random()
+        idleTier = 1
+        invalidate()
+    }
+
+    private fun enterTier2() {
+        if (idleTier >= 2 || isChatting) return
+        val options = mutableListOf<String>()
+        if (stateBitmaps["swing0"] != null) options.add("swing")
+        if (stateBitmaps["sleep"] != null) options.add("sleep")
+        if (options.isEmpty()) return
+        idleAction = options.random()
+        idleTier = 2
+        if (idleAction == "swing") startSwingLoop()
+        onSleepStateChanged?.invoke(idleAction == "sleep")
+        invalidate()
+    }
+
+    private fun actionBubble(): String? {
+        return when (idleAction) {
+            "read" -> listOf("人家正在看书呢…","这本书很有意思呢…","嘘…别吵…").random()
+            "shy" -> listOf("哼，不理你了…","别这样盯着人家看啦…","人家害羞了…").random()
+            "swing" -> listOf("呼~好舒服…","荡秋千真开心…","风吹得人真舒服…").random()
+            "sleep" -> sleepyPhrases.random()
+            else -> null
+        }
+    }
+
     // ── swing animation ──
+
+    private fun startSwingLoop() {
+        val seq = intArrayOf(0, 1, 2, 1, 0, 1, 2, 1)
+        applySwingOffset(0)
+        var step = 0
+        swingAnimator = ValueAnimator.ofInt(0, seq.size - 1).apply {
+            duration = 500L * seq.size
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+            addUpdateListener {
+                val idx = seq[it.animatedValue as Int]
+                swingFrameIndex = idx; applySwingOffset(idx); invalidate()
+            }
+            start()
+        }
+    }
 
     private fun applySwingOffset(idx: Int) {
         val baseR = minOf(width, height) * 0.26f
@@ -241,75 +260,63 @@ class PetView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun isSwingMode(): Boolean = swingMode
-    fun isSleepMode(): Boolean = sleepMode
-    fun isShyMode(): Boolean = shyMode
-    fun isReadMode(): Boolean = readMode
+    fun isSwingMode(): Boolean = idleAction == "swing"
+    fun isSleepMode(): Boolean = idleAction == "sleep"
+    fun isShyMode(): Boolean = idleAction == "shy"
+    fun isReadMode(): Boolean = idleAction == "read"
 
-    fun toggleRead() { if (readMode) stopRead() else startRead() }
-
-    fun startRead() {
-        if (stateBitmaps["read"] == null || readMode || isChatting) return
-        if (sleepMode) wakeUp()
-        readMode = true
+    fun forceAction(action: String) {
+        if (isChatting) return
+        if (idleAction == action) { exitIdleAction(); return }
+        exitIdleAction()
+        if (action == "read" || action == "shy") {
+            idleTier = 1; idleAction = action
+        } else if (action == "swing" || action == "sleep") {
+            idleTier = 2; idleAction = action
+            if (action == "swing") startSwingLoop()
+        }
         invalidate()
+        onSleepStateChanged?.invoke(idleAction == "sleep")
+        onShyStateChanged?.invoke(idleAction == "shy")
+        onSwingStateChanged?.invoke(idleAction == "swing")
     }
 
-    fun stopRead() {
-        readMode = false
-        invalidate()
-    }
+    fun toggleRead() { forceAction("read") }
+    fun toggleSleep() { forceAction("sleep") }
+    fun triggerShy() { forceAction("shy") }
+    fun toggleSwing() { forceAction("swing") }
 
-    // ── sleep ──
+    fun enterSleep() { forceAction("sleep") }
+    fun wakeUp() { if (idleAction == "sleep") exitIdleAction() }
+    fun startRead() { forceAction("read") }
 
-    fun toggleSleep() { if (sleepMode) wakeUp() else enterSleep() }
-
-    fun enterSleep() {
-        if (sleepMode || isChatting) return
-        sleepMode = true; shyMode = false
-        sleepTimer?.let { handler.removeCallbacks(it) }
-        invalidate()
-        onSleepStateChanged?.invoke(true)
-    }
-
-    fun wakeUp() {
-        sleepMode = false
-        sleepTimer?.let { handler.removeCallbacks(it) }
-        resetSleepTimer()
+    private fun exitIdleAction() {
+        swingAnimator?.cancel(); swingAnimator = null
+        swingFrameIndex = 0; swingOffsetX = 0f
+        idleTier = 0; idleAction = ""
         invalidate()
         onSleepStateChanged?.invoke(false)
-    }
-
-    private fun resetSleepTimer() {
-        sleepTimer?.let { handler.removeCallbacks(it) }
-        sleepTimer = Runnable {
-            if (sleepMode || swingMode || shyMode || readMode || isChatting) return@Runnable
-            val hasSwing = stateBitmaps["swing0"] != null
-            if (hasSwing && Math.random() < 0.5) startSwing()
-            else enterSleep()
-        }
-        handler.postDelayed(sleepTimer!!, 60000L)
-    }
-
-    // ── shy ──
-
-    fun triggerShy() {
-        if (isChatting) return
-        if (shyMode) { clearShy(); return }
-        if (sleepMode) wakeUp()
-        shyMode = true
-        shyTimer?.let { handler.removeCallbacks(it) }
-        shyTimer = Runnable { clearShy() }
-        handler.postDelayed(shyTimer!!, 3000L)
-        invalidate()
-        onShyStateChanged?.invoke(true)
-    }
-
-    private fun clearShy() {
-        shyMode = false
-        shyTimer?.let { handler.removeCallbacks(it) }
-        invalidate()
         onShyStateChanged?.invoke(false)
+        onSwingStateChanged?.invoke(false)
+    }
+
+    // ── two-tier idle timer ──
+
+    private var idleCheckRunnable: Runnable? = null
+
+    private fun startIdleCheck() {
+        idleCheckRunnable?.let { handler.removeCallbacks(it) }
+        idleCheckRunnable = object : Runnable {
+            override fun run() {
+                if (isChatting || idleTier > 0) { handler.postDelayed(this, 2000L); return }
+                val elapsed = System.currentTimeMillis() - idleTimer
+                if (elapsed > 60000L) enterTier2()
+                else if (elapsed > 30000L) enterTier1()
+                else if (Math.random() < 0.2) animateBlink()
+                handler.postDelayed(this, 2000L)
+            }
+        }
+        handler.postDelayed(idleCheckRunnable!!, 2000L)
     }
 
     private fun animateSway() {
@@ -378,30 +385,23 @@ class PetView(context: Context) : View(context) {
     // ── resolve current bitmap ──
 
     private fun currentBitmap(): Bitmap? {
-        // swing takes priority
-        if (swingMode || swingAnimRunning) {
+        if (idleAction == "swing") {
             val key = when (swingFrameIndex) {
                 0 -> "swing0"; 1 -> "swing1"; 2 -> "swing2"; else -> "swing0"
             }
             return stateBitmaps[key] ?: stateBitmaps["open"]
         }
-        // sleep and shy override normal expression
-        if (readMode && stateBitmaps["read"] != null) return stateBitmaps["read"]
-        if (sleepMode && stateBitmaps["sleep"] != null) return stateBitmaps["sleep"]
-        if (shyMode && stateBitmaps["shy"] != null) return stateBitmaps["shy"]
-        // blink animation
+        if (idleAction == "sleep" && stateBitmaps["sleep"] != null) return stateBitmaps["sleep"]
+        if (idleAction == "read" && stateBitmaps["read"] != null) return stateBitmaps["read"]
+        if (idleAction == "shy" && stateBitmaps["shy"] != null) return stateBitmaps["shy"]
+        // blink animation in normal mode
         if (blinkAnimRunning && stateBitmaps.size >= 3) {
             val key = when (blinkFrameIndex) {
                 0 -> "open"; 1 -> "half"; 2 -> "closed"; else -> "open"
             }
             return stateBitmaps[key]
         }
-        val expKey = when (expression) {
-            Expression.SLEEPY -> "sleep"
-            Expression.BLUSH, Expression.SHY -> "shy"
-            else -> "open"
-        }
-        return stateBitmaps[expKey] ?: stateBitmaps["open"]
+        return stateBitmaps["open"]
     }
 
     // ── drawing ──
@@ -545,11 +545,8 @@ class PetView(context: Context) : View(context) {
                 if (!touchHitPet) return false
                 touchStartTime = System.currentTimeMillis(); touchStartX = event.rawX; touchStartY = event.rawY
                 isDragging = false; isPinching = false
-                if (swingMode) stopSwing()
-                if (readMode) stopRead()
-                else if (!sleepMode) cancelIdle()
-                if (shyMode) clearShy()
-                resetSleepTimer()
+                if (idleTier == 0) cancelIdle()
+                idleTimer = System.currentTimeMillis()
                 performClick()
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -559,7 +556,6 @@ class PetView(context: Context) : View(context) {
                     pinchStartDist = fingerDist(event); pinchStartAngle = fingerAngle(event)
                     pinchStartSize = minOf(layoutParams?.width?.toFloat() ?: 200f, layoutParams?.width?.toFloat() ?: 200f)
                     pinchStartRotation = userRotation
-                    pinchDirChanges = 0; lastPinchDist = pinchStartDist; pinchDir = 0
                     pendingSingleTap?.let { handler.removeCallbacks(it) }
                 }
             }
@@ -592,12 +588,19 @@ class PetView(context: Context) : View(context) {
                 if (!touchHitPet) return true
                 if (isPinching) {
                     isPinching = false
-                    if (sleepMode) wakeUp() // pinch wakes up sleeping pet
-                    if (pinchDirChanges >= 1) triggerShy() // auto-shy on one zoom reversal
+                    if (idleTier > 0) exitIdleAction()  // pinch exits any tier
                     onResizeEnd?.invoke()
                     idleTimer = System.currentTimeMillis()
                 }
-                else if (isDragging) { isDragging = false; idleTimer = System.currentTimeMillis() }
+                else if (isDragging) {
+                    isDragging = false
+                    if (idleTier == 1) exitIdleAction()  // drag exits tier 1 only
+                    idleTimer = System.currentTimeMillis()
+                }
+                else if (idleTier > 0) {
+                    // tap during idle → action-specific bubble
+                    actionBubble()?.let { speechText = it }
+                }
                 else handleTap()
             }
             MotionEvent.ACTION_POINTER_UP -> {
@@ -608,13 +611,7 @@ class PetView(context: Context) : View(context) {
     }
 
     private fun handleTap() {
-        // don't interrupt chat streaming
         if (isChatting) return
-        // in sleep mode, tap shows sleepy bubble instead of normal interaction
-        if (sleepMode) {
-            speechText = sleepyPhrases.random()
-            return
-        }
         val now = System.currentTimeMillis()
         if (now - lastTapTime < 350L) {
             handler.removeCallbacks(pendingSingleTap ?: return); pendingSingleTap = null; lastTapTime = 0L
