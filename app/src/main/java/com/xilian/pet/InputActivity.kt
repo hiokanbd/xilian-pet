@@ -135,53 +135,11 @@ class InputActivity : Activity() {
     }
 
     private fun sendToTermux(text: String) {
-        postChatting(true)
-        postBubble("…")
-
-        PetBridge.streamChat(
-            text = text,
-            onToken = { partial -> postBubble(partial) },
-            onComplete = { full ->
-                postChatting(false)
-                postBubble(full)
-            },
-            onError = { err ->
-                postChatting(false)
-                postBubble(err)
-            }
-        )
-    }
-
-    private fun postChatting(active: Boolean) {
-        thread {
-            try {
-                val url = java.net.URL("http://127.0.0.1:${PetBridge.BRIDGE_PORT}/chatting")
-                val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json")
-                val body = org.json.JSONObject().apply { put("active", active) }.toString()
-                conn.outputStream.write(body.toByteArray())
-                conn.responseCode
-            } catch (_: Exception) {}
+        val intent = Intent(this, FloatingPetService::class.java).apply {
+            action = FloatingPetService.ACTION_CHAT
+            putExtra("message", text)
         }
-    }
-
-    private fun postBubble(text: String) {
-        thread {
-            try {
-                val url = java.net.URL("http://127.0.0.1:${PetBridge.BRIDGE_PORT}/bubble")
-                val conn = url.openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json")
-                val body = org.json.JSONObject().apply {
-                    put("text", text.take(300))
-                }.toString()
-                conn.outputStream.write(body.toByteArray())
-                conn.responseCode
-            } catch (_: Exception) {}
-        }
+        startService(intent)
     }
 
     // extension helpers

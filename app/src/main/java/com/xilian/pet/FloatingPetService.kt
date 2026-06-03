@@ -173,6 +173,10 @@ class FloatingPetService : Service() {
                 val pct = intent?.getIntExtra("value", 100) ?: 100
                 setOpacity(pct / 100f)
             }
+            ACTION_CHAT -> {
+                val msg = intent?.getStringExtra("message") ?: return START_STICKY
+                handleChat(msg)
+            }
         }
         return START_STICKY
     }
@@ -228,6 +232,36 @@ class FloatingPetService : Service() {
     }
 
     fun getOpacityPct(): Int = (petView.petAlpha * 100).toInt()
+
+    private fun handleChat(message: String) {
+        petView.isChatting = true
+        updateBubble("…")
+
+        PetBridge.streamChat(
+            text = message,
+            onToken = { partial -> handler.post { updateBubble(partial) } },
+            onComplete = { full ->
+                handler.post {
+                    updateBubble(full)
+                    petView.isChatting = false
+                    scheduleBubbleFade()
+                }
+            },
+            onError = { err ->
+                handler.post {
+                    updateBubble(err)
+                    petView.isChatting = false
+                    scheduleBubbleFade()
+                }
+            }
+        )
+    }
+
+    private fun scheduleBubbleFade() {
+        bubbleFadeTask?.let { handler.removeCallbacks(it) }
+        bubbleFadeTask = Runnable { bubbleView.visibility = View.GONE }
+        handler.postDelayed(bubbleFadeTask!!, 5000L)
+    }
 
     private fun buildNotification(): Notification {
         val toggleLabel = if (isPetVisible) "隐藏" else "显示"
@@ -317,6 +351,7 @@ class FloatingPetService : Service() {
         const val ACTION_CONTROLS = "com.xilian.pet.CONTROLS"
         const val ACTION_RELOAD_IMAGES = "com.xilian.pet.RELOAD_IMAGES"
         const val ACTION_SET_OPACITY = "com.xilian.pet.SET_OPACITY"
+        const val ACTION_CHAT = "com.xilian.pet.CHAT"
         const val DEFAULT_SIZE = 220
         const val MIN_WIN = 120
         const val MAX_WIN = 900
