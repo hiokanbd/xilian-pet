@@ -129,6 +129,7 @@ let shyMode = false;      // shy/sweet state
 let shyTimer = null;
 let sleepTimer = null;
 let readMode = false;    // reading state (continuous like swing)
+let chatting = false;    // true during chat streaming, blocks idle state changes
 let lastInteraction = Date.now();
 let pinchDirChanges = 0;  // count direction reversals during pinch
 let lastPinchScale = 1;
@@ -144,7 +145,8 @@ let currentSlotEdit = null; // which slot is being uploaded
 // gestures
 let touchState = { startTime:0, startX:0, startY:0, startPetX:0, startPetY:0,
                    lastTap:0, pendingTap:null, dragging:false, pinching:false,
-                   pinchStartDist:0, pinchStartR:0, pinchStartAngle:0, pinchStartRotation:0 };
+                   pinchStartDist:0, pinchStartR:0, pinchStartAngle:0, pinchStartRotation:0,
+                   hitPet: false };
 
 const phrases = [
   "伙伴~", "嗯？", "在呢", "想你了", "嘻嘻",
@@ -159,6 +161,7 @@ const sleepyPhrases = [
 ];
 
 function sleepyBubble() {
+  if (chatting) return;
   showBubble(sleepyPhrases[Math.floor(Math.random() * sleepyPhrases.length)]);
 }
 
@@ -278,26 +281,35 @@ function idleLoop() {
   const elapsed = Date.now() - idleTimer;
   if (elapsed > 10000 && Math.random() < 0.3) playRandomIdle();
   else if (elapsed > 6000 && Math.random() < 0.15) playRandomIdle();
+  checkInactivityTriggers();
   setTimeout(idleLoop, 2000);
 }
 setTimeout(idleLoop, 4000);
 
 function playRandomIdle() {
-  if (sleepMode || shyMode || readMode || swingMode) return;
+  if (sleepMode || shyMode || readMode || swingMode || chatting) return;
   idleTimer = Date.now();
-  const hasSwing = petStates.swing0 && petStates.swing1 && petStates.swing2;
   const hasRead = !!petStates.read;
-  const total = 4 + (hasSwing ? 1 : 0) + (hasRead ? 1 : 0);
+  const total = 4 + (hasRead ? 1 : 0);
   const n = Math.floor(Math.random() * total);
   if (n < 4) {
     if (n === 0) swayAnim();
     else if (n === 1) blinkAnim();
     else if (n === 2) stretchAnim();
     else turnAnim();
-  } else if (n === 4 && hasSwing) {
-    swingAnim();
   } else {
     startRead();
+  }
+}
+
+// swing and sleep trigger after 60s inactivity
+function checkInactivityTriggers() {
+  if (chatting) return;
+  const elapsed = Date.now() - lastInteraction;
+  if (elapsed > 60000 && !swingMode && !sleepMode && !readMode && !shyMode) {
+    const hasSwing = petStates.swing0 && petStates.swing1 && petStates.swing2;
+    if (hasSwing && Math.random() < 0.5) startSwing();
+    else enterSleep();
   }
 }
 
@@ -332,6 +344,7 @@ function swingAnim() {
 }
 
 function toggleSwing() {
+  if (chatting) return;
   if (!petStates.swing0 || !petStates.swing1 || !petStates.swing2) return;
   if (swingMode) {
     stopSwing();
@@ -401,11 +414,13 @@ function wakeUp() {
 }
 
 function toggleSleep() {
+  if (chatting) return;
   if (sleepMode) { wakeUp(); resetSleepTimer(); }
   else { clearTimeout(sleepTimer); enterSleep(); }
 }
 
 function triggerShy() {
+  if (chatting) return;
   if (shyMode) { clearShy(); return; }
   if (sleepMode) wakeUp();
   shyMode = true;
@@ -434,18 +449,68 @@ function turnAnim() {
 
 // ── bubble / expression ──
 
-function showBubble(text) { bubbleText = text; bubbleAlpha = 1; clearTimeout(bubbleTimer); bubbleTimer = setTimeout(() => { bubbleAlpha=0; draw(); }, 3500); draw(); }
-function randomBubble() { showBubble(phrases[Math.floor(Math.random()*phrases.length)]); }
+function showBubble(text, keepAlive) {
+  bubbleText = text; bubbleAlpha = 1;
+  clearTimeout(bubbleTimer);
+  if (!keepAlive) {
+    bubbleTimer = setTimeout(() => { bubbleAlpha=0; draw(); }, 3500);
+  }
+  draw();
+}
+function randomBubble() { if (chatting) return; showBubble(phrases[Math.floor(Math.random()*phrases.length)]); }
 function setExpression(expr) { expression = expr; draw(); }
 
 // ── dialog ──
 
-function showDialog() { dialog.classList.add('show'); overlay.classList.add('show'); dlgInput.value=''; setTimeout(() => dlgInput.focus(), 200); }
+function showDialog() { if (chatting) return; dialog.classList.add('show'); overlay.classList.add('show'); dlgInput.value=''; setTimeout(() => dlgInput.focus(), 200); }
 function hideDialog() { dialog.classList.remove('show'); overlay.classList.remove('show'); }
 function sendMessage() {
   const t = dlgInput.value.trim(); hideDialog(); if (!t) return;
-  showBubble('[Termux] 人家收到了——\n"'+t.substring(0,50)+'"');
-  setExpression('THINKING'); setTimeout(() => setExpression('NEUTRAL'), 2000);
+  showBubble('…', true);
+  setExpression('THINKING');
+  chatting = true;
+
+  fetch('http://127.0.0.1:8000/api/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: t, user_id: 'hezi' })
+  }).then(async response => {
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulated = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const chunk = line.slice(6);
+          if (chunk === '[DONE]') {
+            // stream complete
+          } else {
+            accumulated += chunk.replace(/\\n/g, '\n');
+            showBubble(accumulated || '…', true);
+          }
+        } else if (line !== '') {
+          buffer += line + '\n';
+        }
+      }
+    }
+    setExpression('NEUTRAL');
+    idleTimer = Date.now();
+    chatting = false;
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => { bubbleAlpha = 0; draw(); }, 5000);
+  }).catch(err => {
+    showBubble('人家现在连不上后端呢…\n' + (err.message || 'agent 未启动'));
+    setExpression('NEUTRAL');
+    chatting = false;
+  });
 }
 
 // ── settings panel ──
@@ -520,6 +585,7 @@ function resetAllSlots() {
 function loadDefaultFrames() {
   const paths = {
     open:'pet_open.png', half:'pet_half.png', closed:'pet_closed.png',
+    sleep:'pet_sleep.png', shy:'pet_shy.png', read:'pet_read.png',
     swing0:'pet_swing0.png', swing1:'pet_swing1.png', swing2:'pet_swing2.png'
   };
   let loaded = 0; const total = Object.keys(paths).length;
@@ -528,7 +594,6 @@ function loadDefaultFrames() {
     img.onload = function() {
       petStates[k] = img; loaded++;
       if (loaded >= total) {
-        petStates.sleep = null; petStates.shy = null;
         blinkFrameIdx = 0; blinkRunning = false; swingRunning = false;
         document.getElementById('imgStatus').textContent = '默认';
         draw();
@@ -539,6 +604,7 @@ function loadDefaultFrames() {
 }
 
 function toggleRead() {
+  if (chatting) return;
   if (readMode) { stopRead(); } else { startRead(); }
 }
 
@@ -566,14 +632,22 @@ function toggleVisible() { petVisible = !petVisible; document.getElementById('to
 
 // ── touch ──
 
+function hitTest(x, y) {
+  const dx = x - petX, dy = y - petY;
+  const r = petR * stretchScale;
+  return Math.sqrt(dx*dx + dy*dy) < r * 1.5; // generous hit area
+}
+
 canvas.addEventListener('touchstart', e => {
   if (e.touches.length === 1) {
+    touchState.hitPet = hitTest(e.touches[0].clientX, e.touches[0].clientY);
+    if (!touchState.hitPet) return;
     const t = e.touches[0];
     touchState.startTime = Date.now(); touchState.startX = t.clientX; touchState.startY = t.clientY;
     touchState.startPetX = petX; touchState.startPetY = petY;
     touchState.dragging = false; touchState.pinching = false;
     onUserInteract();
-  } else if (e.touches.length === 2 && Date.now() - touchState.startTime > 180) {
+  } else if (e.touches.length === 2 && touchState.hitPet && Date.now() - touchState.startTime > 180) {
     touchState.pinching = true;
     onUserInteract();
     const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -588,6 +662,7 @@ canvas.addEventListener('touchstart', e => {
 }, { passive: false });
 
 canvas.addEventListener('touchmove', e => {
+  if (!touchState.hitPet) return;
   if (touchState.pinching && e.touches.length === 2) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -613,6 +688,7 @@ canvas.addEventListener('touchmove', e => {
 }, { passive: false });
 
 canvas.addEventListener('touchend', e => {
+  if (!touchState.hitPet) return;
   if (touchState.pinching) {
     touchState.pinching = false;
     // pinch wakes up sleeping pet
@@ -633,6 +709,7 @@ canvas.addEventListener('touchend', e => {
 
 let mouseDown = false, mouseDrag = false;
 canvas.addEventListener('mousedown', e => {
+  if (!hitTest(e.clientX, e.clientY)) return;
   mouseDown = true; mouseDrag = false;
   onUserInteract();
   touchState.startTime = Date.now(); touchState.startX = e.clientX; touchState.startY = e.clientY;

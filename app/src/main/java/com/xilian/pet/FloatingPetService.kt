@@ -41,6 +41,9 @@ class FloatingPetService : Service() {
                 "open" to R.drawable.pet_open,
                 "half" to R.drawable.pet_half,
                 "closed" to R.drawable.pet_closed,
+                "sleep" to R.drawable.pet_sleep,
+                "shy" to R.drawable.pet_shy,
+                "read" to R.drawable.pet_read,
                 "swing0" to R.drawable.pet_swing0,
                 "swing1" to R.drawable.pet_swing1,
                 "swing2" to R.drawable.pet_swing2

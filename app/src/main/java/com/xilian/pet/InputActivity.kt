@@ -135,23 +135,52 @@ class InputActivity : Activity() {
     }
 
     private fun sendToTermux(text: String) {
-        PetBridge.sendToTermux(text) { reply ->
-            // Post reply as a bubble on the pet via bridge
-            // We send to our own bridge which the service is listening on
-            thread {
-                try {
-                    val url = java.net.URL("http://127.0.0.1:${PetBridge.BRIDGE_PORT}/bubble")
-                    val conn = url.openConnection() as java.net.HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.doOutput = true
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    val body = org.json.JSONObject().apply {
-                        put("text", reply.take(200))
-                    }.toString()
-                    conn.outputStream.write(body.toByteArray())
-                    conn.responseCode // trigger
-                } catch (_: Exception) {}
+        postChatting(true)
+        postBubble("…")
+
+        PetBridge.streamChat(
+            text = text,
+            onToken = { partial -> postBubble(partial) },
+            onComplete = { full ->
+                postChatting(false)
+                postBubble(full)
+            },
+            onError = { err ->
+                postChatting(false)
+                postBubble(err)
             }
+        )
+    }
+
+    private fun postChatting(active: Boolean) {
+        thread {
+            try {
+                val url = java.net.URL("http://127.0.0.1:${PetBridge.BRIDGE_PORT}/chatting")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                val body = org.json.JSONObject().apply { put("active", active) }.toString()
+                conn.outputStream.write(body.toByteArray())
+                conn.responseCode
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun postBubble(text: String) {
+        thread {
+            try {
+                val url = java.net.URL("http://127.0.0.1:${PetBridge.BRIDGE_PORT}/bubble")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                val body = org.json.JSONObject().apply {
+                    put("text", text.take(300))
+                }.toString()
+                conn.outputStream.write(body.toByteArray())
+                conn.responseCode
+            } catch (_: Exception) {}
         }
     }
 

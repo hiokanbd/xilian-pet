@@ -2,6 +2,7 @@ package com.xilian.pet
 
 import android.util.Log
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -53,7 +54,6 @@ class PetBridge(
             val method = parts[0]
             val path = parts[1]
 
-            // read headers
             var contentLength = 0
             var line = reader.readLine()
             while (!line.isNullOrEmpty()) {
@@ -63,7 +63,6 @@ class PetBridge(
                 line = reader.readLine()
             }
 
-            // read body
             val body = if (contentLength > 0) {
                 val buf = CharArray(contentLength)
                 reader.read(buf, 0, contentLength)
@@ -95,10 +94,10 @@ class PetBridge(
                 method == "POST" && path == "/expression" -> {
                     val json = JSONObject(body)
                     val type = json.optString("type", "NEUTRAL")
-                    val expr = try {
-                        PetView.Expression.valueOf(type.uppercase())
-                    } catch (_: Exception) { PetView.Expression.NEUTRAL }
-                    petView.post { petView.expression = expr }
+                    petView.post {
+                        try { petView.expression = PetView.Expression.valueOf(type.uppercase()) }
+                        catch (_: Exception) {}
+                    }
                     ok()
                 }
                 method == "POST" && path == "/bubble" -> {
@@ -112,6 +111,12 @@ class PetBridge(
                         }
                         petView.speechText = text
                     }
+                    ok()
+                }
+                method == "POST" && path == "/chatting" -> {
+                    val json = JSONObject(body)
+                    val active = json.optBoolean("active", false)
+                    petView.post { petView.isChatting = active }
                     ok()
                 }
                 method == "GET" && path == "/status" -> {
@@ -128,29 +133,79 @@ class PetBridge(
 
     companion object {
         const val BRIDGE_PORT = 28765
-        const val TERMUX_PORT = 28766
+        const val AGENT_PORT = 8000
         private const val TAG = "PetBridge"
 
-        /** Called from InputActivity to send user message to Termux backend */
-        fun sendToTermux(text: String, callback: ((String) -> Unit)? = null) {
+        /**
+         * SSE streaming chat — connects to xilian-agent API on port 8000.
+         * Same backend as the web UI.
+         */
+        fun streamChat(
+            text: String,
+            onToken: ((String) -> Unit)? = null,
+            onComplete: ((String) -> Unit)? = null,
+            onError: ((String) -> Unit)? = null
+        ) {
             thread {
                 try {
-                    val url = URL("http://127.0.0.1:$TERMUX_PORT/chat")
+                    val url = URL("http://127.0.0.1:$AGENT_PORT/api/chat/stream")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.doOutput = true
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.connectTimeout = 3000
-                    conn.readTimeout = 15000
+                    conn.readTimeout = 60000
 
-                    val body = JSONObject().apply { put("text", text) }.toString()
+                    val body = JSONObject().apply {
+                        put("message", text)
+                        put("user_id", "hezi")
+                    }.toString()
+                    conn.outputStream.write(body.toByteArray())
+
+                    val reader = BufferedReader(InputStreamReader(conn.inputStream, "UTF-8"))
+                    val accumulated = StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        val l = line ?: continue
+                        if (!l.startsWith("data: ")) continue
+                        val chunk = l.substring(6)
+                        if (chunk == "[DONE]") {
+                            onComplete?.invoke(accumulated.toString())
+                            return@thread
+                        }
+                        accumulated.append(chunk.replace("\\n", "\n"))
+                        onToken?.invoke(accumulated.toString())
+                    }
+                    onComplete?.invoke(accumulated.toString())
+                } catch (e: Exception) {
+                    onError?.invoke("人家现在连不上后端呢…\n${e.message?.take(80) ?: "agent 未启动"}")
+                }
+            }
+        }
+
+        /** Non-streaming fallback */
+        fun sendToTermux(text: String, callback: ((String) -> Unit)? = null) {
+            thread {
+                try {
+                    val url = URL("http://127.0.0.1:$AGENT_PORT/api/chat")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 30000
+
+                    val body = JSONObject().apply {
+                        put("message", text)
+                        put("user_id", "hezi")
+                    }.toString()
                     conn.outputStream.write(body.toByteArray())
 
                     val resp = conn.inputStream.bufferedReader().readText()
                     val reply = JSONObject(resp).optString("reply", resp)
                     callback?.invoke(reply)
                 } catch (e: Exception) {
-                    callback?.invoke("人家现在连不上后端呢…\n(Termux 昔涟未响应: ${e.message?.take(60)})")
+                    callback?.invoke("人家现在连不上后端呢…\n${e.message?.take(60)}")
                 }
             }
         }
