@@ -30,6 +30,8 @@ class ControlActivity : Activity() {
 
         card.addView(sectionTitle("动作"))
         card.addView(actionRow())
+        card.addView(space(4))
+        card.addView(wanderRow())
         card.addView(space(8))
         card.addView(opacityRow())
         card.addView(space(20))
@@ -67,6 +69,15 @@ class ControlActivity : Activity() {
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3),0,dp(3),0) })
             }
         }
+    }
+
+    private fun wanderRow(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        addView(TextView(this@ControlActivity).apply {
+            text = "保持时游走"; setTextColor(0xFF8B7B6B.toInt()); textSize = 13f
+            setPadding(0, 0, dp(8), 0)
+        })
+        addView(smallBtn("开/关") { sendAction(FloatingPetService.ACTION_WANDER_TOGGLE) })
     }
 
     // ── opacity ──

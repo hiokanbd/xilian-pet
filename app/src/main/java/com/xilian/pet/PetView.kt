@@ -23,6 +23,7 @@ class PetView(context: Context) : View(context) {
     var onResize: ((Float) -> Unit)? = null
     var onResizeEnd: (() -> Unit)? = null
     var onSpeechChanged: ((String?) -> Unit)? = null
+    var onWanderMove: ((Float, Float) -> Unit)? = null  // dx, dy for wander
 
     var expression = Expression.NEUTRAL
         set(value) { field = value; invalidate() }
@@ -86,12 +87,22 @@ class PetView(context: Context) : View(context) {
     private var swingAnimRunning = false // brief idle swing
     private var swingAnimator: ValueAnimator? = null
 
+    // wander state
+    private var wanderOffsetX = 0f
+    private var wanderOffsetY = 0f
+    private var wanderAnimator: ValueAnimator? = null
+    private val wanderBubbles = listOf(
+        "啦啦啦~", "嗯…去哪呢…", "人家到处走走…", "这里风景不错呢",
+        "一蹦一跳~", "伙伴在看着吗？", "哼着小曲~", "世界好大呢…"
+    )
+
     // two-tier idle system
     private var idleTier = 0       // 0=normal, 1=tier1(read/shy), 2=tier2(swing/sleep)
     private var idleAction = ""    // "read","shy","swing","sleep"
     private var tierEnteredAt = 0L
     var isChatting = false
-    var freezeMode = false  // when true, idle timer won't advance and action stays forever
+    var freezeMode = false
+    var wanderEnabled = true  // when frozen, wander around screen
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
     private var pinchDirChanges = 0
@@ -265,6 +276,34 @@ class PetView(context: Context) : View(context) {
 
     fun isFrozen(): Boolean = freezeMode
 
+    private fun maybeWander() {
+        if (wanderAnimator?.isRunning == true) return
+        if (Math.random() < 0.3) { animateSway(); return }
+
+        val angle = Math.random() * 2 * Math.PI
+        val dist = 40.0 + Math.random() * 100.0
+        val dx = (Math.cos(angle) * dist).toFloat()
+        val dy = (Math.sin(angle) * dist).toFloat()
+
+        if (Math.random() < 0.25) speechText = wanderBubbles.random()
+
+        var lastX = 0f; var lastY = 0f
+        wanderAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 1500L
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                val ox = dx * t; val oy = dy * t
+                val hop = (kotlin.math.sin(t * Math.PI) * 15f).toFloat()
+                swayOffset = (kotlin.math.sin(t * 3 * Math.PI) * 8f).toFloat()
+                onWanderMove?.invoke(ox - lastX, (oy - lastY) + hop)
+                lastX = ox; lastY = oy
+                invalidate()
+            }
+            start()
+        }
+    }
+
     fun randomAction() {
         val all = mutableListOf<String>()
         if (stateBitmaps["read"] != null) all.add("read")
@@ -292,7 +331,12 @@ class PetView(context: Context) : View(context) {
         idleCheckRunnable?.let { handler.removeCallbacks(it) }
         idleCheckRunnable = object : Runnable {
             override fun run() {
-                if (isChatting || freezeMode) { handler.postDelayed(this, 2000L); return }
+                if (isChatting) { handler.postDelayed(this, 2000L); return }
+                if (freezeMode) {
+                    if (wanderEnabled) maybeWander()
+                    else animateSway()  // in-place sway when wander off
+                    handler.postDelayed(this, 2000L); return
+                }
                 val elapsed = System.currentTimeMillis() - idleTimer
                 // tier progression
                 if (idleTier == 0) {

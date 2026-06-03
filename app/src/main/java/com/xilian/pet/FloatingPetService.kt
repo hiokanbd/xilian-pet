@@ -52,6 +52,7 @@ class FloatingPetService : Service() {
         petView.onSwingStateChanged = { updateNotification() }
         petView.onSleepStateChanged = { updateNotification() }
         petView.onShyStateChanged = { updateNotification() }
+        petView.onWanderMove = { dx, dy -> movePetBy(dx, dy) }
 
         startForeground(NOTIFICATION_ID, buildNotification())
 
@@ -180,6 +181,7 @@ class FloatingPetService : Service() {
             ACTION_FREEZE -> petView.toggleFreeze()
             ACTION_RANDOM -> petView.randomAction()
             ACTION_OPACITY_POPUP -> showOpacityPopup()
+            ACTION_WANDER_TOGGLE -> { petView.wanderEnabled = !petView.wanderEnabled; updateNotification() }
         }
         return START_STICKY
     }
@@ -188,6 +190,15 @@ class FloatingPetService : Service() {
         petLayoutParams?.let { lp ->
             lp.x = rawX.toInt() - lp.width / 2
             lp.y = rawY.toInt() - lp.height / 2 - STATUS_BAR_OFFSET
+            windowManager.updateViewLayout(petView, lp)
+            positionBubble()
+        }
+    }
+
+    private fun movePetBy(dx: Float, dy: Float) {
+        petLayoutParams?.let { lp ->
+            lp.x = (lp.x + dx.toInt()).coerceIn(-lp.width/2, resources.displayMetrics.widthPixels - lp.width/2)
+            lp.y = (lp.y + dy.toInt()).coerceIn(0, resources.displayMetrics.heightPixels - lp.height)
             windowManager.updateViewLayout(petView, lp)
             positionBubble()
         }
@@ -401,6 +412,7 @@ class FloatingPetService : Service() {
         const val ACTION_FREEZE = "com.xilian.pet.FREEZE"
         const val ACTION_RANDOM = "com.xilian.pet.RANDOM"
         const val ACTION_OPACITY_POPUP = "com.xilian.pet.OPACITY_POPUP"
+        const val ACTION_WANDER_TOGGLE = "com.xilian.pet.WANDER_TOGGLE"
         const val DEFAULT_SIZE = 220
         const val MIN_WIN = 120
         const val MAX_WIN = 900
