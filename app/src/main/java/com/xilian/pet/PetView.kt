@@ -553,8 +553,9 @@ class PetView(context: Context) : View(context) {
                 performClick()
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (System.currentTimeMillis() - touchStartTime > 180L && event.pointerCount == 2) {
-                    isPinching = true
+                if (event.pointerCount == 2) {
+                    // enter pinch immediately on second finger (no 180ms delay)
+                    isPinching = true; isDragging = false
                     pinchStartDist = fingerDist(event); pinchStartAngle = fingerAngle(event)
                     pinchStartSize = minOf(layoutParams?.width?.toFloat() ?: 200f, layoutParams?.width?.toFloat() ?: 200f)
                     pinchStartRotation = userRotation
