@@ -89,6 +89,7 @@ class PetView(context: Context) : View(context) {
     // two-tier idle system
     private var idleTier = 0       // 0=normal, 1=tier1(read/shy), 2=tier2(swing/sleep)
     private var idleAction = ""    // "read","shy","swing","sleep"
+    private var tierEnteredAt = 0L // timestamp when current tier was entered
     var isChatting = false
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
@@ -143,7 +144,7 @@ class PetView(context: Context) : View(context) {
         if (stateBitmaps["shy"] != null) options.add("shy")
         if (options.isEmpty()) return
         idleAction = options.random()
-        idleTier = 1
+        idleTier = 1; tierEnteredAt = System.currentTimeMillis()
         invalidate()
     }
 
@@ -154,7 +155,7 @@ class PetView(context: Context) : View(context) {
         if (stateBitmaps["sleep"] != null) options.add("sleep")
         if (options.isEmpty()) return
         idleAction = options.random()
-        idleTier = 2
+        idleTier = 2; tierEnteredAt = System.currentTimeMillis()
         if (idleAction == "swing") startSwingLoop()
         onSleepStateChanged?.invoke(idleAction == "sleep")
         invalidate()
@@ -254,7 +255,7 @@ class PetView(context: Context) : View(context) {
     private fun exitIdleAction() {
         swingAnimator?.cancel(); swingAnimator = null
         swingFrameIndex = 0; swingOffsetX = 0f
-        idleTier = 0; idleAction = ""
+        idleTier = 0; idleAction = ""; tierEnteredAt = 0L
         invalidate()
         onSleepStateChanged?.invoke(false)
         onShyStateChanged?.invoke(false)
@@ -269,11 +270,18 @@ class PetView(context: Context) : View(context) {
         idleCheckRunnable?.let { handler.removeCallbacks(it) }
         idleCheckRunnable = object : Runnable {
             override fun run() {
-                if (isChatting || idleTier > 0) { handler.postDelayed(this, 2000L); return }
+                if (isChatting) { handler.postDelayed(this, 2000L); return }
                 val elapsed = System.currentTimeMillis() - idleTimer
-                if (elapsed > 60000L) enterTier2()
-                else if (elapsed > 30000L) enterTier1()
-                else if (Math.random() < 0.2) animateBlink()
+                // tier progression
+                if (idleTier == 0) {
+                    if (elapsed > 60000L) enterTier2()
+                    else if (elapsed > 30000L) enterTier1()
+                    else if (Math.random() < 0.2) animateBlink()
+                } else if (idleTier == 1) {
+                    // tier 1 → tier 2 after 30s in tier 1
+                    if (System.currentTimeMillis() - tierEnteredAt > 30000L) enterTier2()
+                }
+                // tier 2 stays until pinch-interrupted
                 handler.postDelayed(this, 2000L)
             }
         }
