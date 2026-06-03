@@ -54,7 +54,7 @@ class ControlActivity : Activity() {
     // ── action row ──
 
     private fun actionRow(): View {
-        val actions = listOf(
+        val actions: List<Pair<String, String>> = listOf(
             "秋千" to FloatingPetService.ACTION_SWING,
             "睡觉" to FloatingPetService.ACTION_SLEEP,
             "撒娇" to FloatingPetService.ACTION_SHY,
