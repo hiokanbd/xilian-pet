@@ -3,6 +3,7 @@ package com.xilian.pet
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import java.io.File
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -46,7 +47,7 @@ class FloatingPetService : Service() {
         petView.onResizeEnd = { commitResize(1f) }
         petView.onSpeechChanged = { text -> updateBubble(text) }
 
-        loadDefaultImages()
+        loadAllImages()
 
         petView.onSwingStateChanged = { updateNotification() }
         petView.onSleepStateChanged = { updateNotification() }
@@ -104,26 +105,29 @@ class FloatingPetService : Service() {
         bridge.start()
     }
 
-    private fun loadDefaultImages() {
-        try {
-            val states = mapOf(
-                "open" to R.drawable.pet_open,
-                "half" to R.drawable.pet_half,
-                "closed" to R.drawable.pet_closed,
-                "sleep" to R.drawable.pet_sleep,
-                "shy" to R.drawable.pet_shy,
-                "read" to R.drawable.pet_read,
-                "swing0" to R.drawable.pet_swing0,
-                "swing1" to R.drawable.pet_swing1,
-                "swing2" to R.drawable.pet_swing2
-            )
-            states.forEach { (key, resId) ->
-                val drawable = resources.getDrawable(resId, theme)
-                if (drawable is android.graphics.drawable.BitmapDrawable) {
-                    petView.setStateBitmap(key, drawable.bitmap)
-                }
+    private fun loadAllImages() {
+        val defaults = mapOf(
+            "open" to R.drawable.pet_open,
+            "half" to R.drawable.pet_half,
+            "closed" to R.drawable.pet_closed,
+            "sleep" to R.drawable.pet_sleep,
+            "shy" to R.drawable.pet_shy,
+            "read" to R.drawable.pet_read,
+            "swing0" to R.drawable.pet_swing0,
+            "swing1" to R.drawable.pet_swing1,
+            "swing2" to R.drawable.pet_swing2
+        )
+        defaults.forEach { (key, resId) ->
+            // try saved image first, fall back to default
+            val saved = File(filesDir, "pet_$key.png")
+            val bmp = if (saved.exists()) {
+                android.graphics.BitmapFactory.decodeFile(saved.absolutePath)
+            } else {
+                val d = resources.getDrawable(resId, theme)
+                if (d is android.graphics.drawable.BitmapDrawable) d.bitmap else null
             }
-        } catch (_: Exception) {}
+            if (bmp != null) petView.setStateBitmap(key, bmp)
+        }
     }
 
     private fun updateBubble(text: String?) {
@@ -164,6 +168,7 @@ class FloatingPetService : Service() {
             ACTION_SHY -> petView.triggerShy()
             ACTION_READ -> petView.toggleRead()
             ACTION_CONTROLS -> startActivity(Intent(this, ControlActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            ACTION_RELOAD_IMAGES -> loadAllImages()
         }
         return START_STICKY
     }
@@ -298,6 +303,7 @@ class FloatingPetService : Service() {
         const val ACTION_SHY = "com.xilian.pet.SHY"
         const val ACTION_READ = "com.xilian.pet.READ"
         const val ACTION_CONTROLS = "com.xilian.pet.CONTROLS"
+        const val ACTION_RELOAD_IMAGES = "com.xilian.pet.RELOAD_IMAGES"
         const val DEFAULT_SIZE = 220
         const val MIN_WIN = 120
         const val MAX_WIN = 900
