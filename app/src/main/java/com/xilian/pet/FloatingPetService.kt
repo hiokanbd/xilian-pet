@@ -40,6 +40,9 @@ class FloatingPetService : Service() {
 
         // ── pet view ──
         petView = PetView(this)
+        val dm = resources.displayMetrics
+        petView.screenW = dm.widthPixels
+        petView.screenH = dm.heightPixels
         petView.onSingleTap = { showRandomBubble() }
         petView.onDoubleTap = { showInputDialog() }
         petView.onDrag = { x, y -> movePetTo(x, y) }

@@ -88,9 +88,9 @@ class PetView(context: Context) : View(context) {
     private var swingAnimator: ValueAnimator? = null
 
     // wander state
-    private var wanderOffsetX = 0f
-    private var wanderOffsetY = 0f
     private var wanderAnimator: ValueAnimator? = null
+    private var lastWanderTime = 0L
+    private var wanderFirstDone = false
     private val wanderBubbles = listOf(
         "啦啦啦~", "嗯…去哪呢…", "人家到处走走…", "这里风景不错呢",
         "一蹦一跳~", "伙伴在看着吗？", "哼着小曲~", "世界好大呢…"
@@ -102,7 +102,9 @@ class PetView(context: Context) : View(context) {
     private var tierEnteredAt = 0L
     var isChatting = false
     var freezeMode = false
-    var wanderEnabled = true  // when frozen, wander around screen
+    var wanderEnabled = true
+    var screenW = 1080  // set by service on init
+    var screenH = 1920
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
     private var pinchDirChanges = 0
@@ -271,17 +273,57 @@ class PetView(context: Context) : View(context) {
 
     fun toggleFreeze() {
         if (freezeMode) { freezeMode = false; exitIdleAction() }
-        else if (idleTier > 0) { freezeMode = true }
+        else if (idleTier > 0) {
+            freezeMode = true
+            lastWanderTime = System.currentTimeMillis()
+            wanderFirstDone = false
+        }
     }
 
     fun isFrozen(): Boolean = freezeMode
 
+    // ── wander: donut zone around screen edges ──
+
+    /** pick a random target in the outer 0-30% screen edges, avoiding center */
+    private fun pickWanderTarget(): Pair<Float, Float> {
+        val margin = 0.30f  // outer 30% of screen
+        // pick which edge zone: top, bottom, left, right
+        val zone = (Math.random() * 4).toInt()
+        val rx = Math.random().toFloat()
+        val ry = Math.random().toFloat()
+        return when (zone) {
+            0 -> Pair(rx * screenW, ry * screenH * margin)                          // top strip
+            1 -> Pair(rx * screenW, screenH * (1f - margin) + ry * screenH * margin) // bottom strip
+            2 -> Pair(rx * screenW * margin, ry * screenH)                           // left strip
+            3 -> Pair(screenW * (1f - margin) + rx * screenW * margin, ry * screenH) // right strip
+            else -> Pair(screenW / 2f, screenH / 2f)
+        }
+    }
+
     private fun maybeWander() {
         if (wanderAnimator?.isRunning == true) return
-        if (Math.random() < 0.3) { animateSway(); return }
 
-        val angle = Math.random() * 2 * Math.PI
-        val dist = 40.0 + Math.random() * 100.0
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastWanderTime
+        val shouldWander = if (!wanderFirstDone) {
+            elapsed > 20_000L  // first trigger after 20s
+        } else {
+            elapsed > 10_000L && Math.random() < 0.5  // every 10s, 50% chance
+        }
+
+        if (!shouldWander) { animateSway(); return }
+
+        wanderFirstDone = true
+        lastWanderTime = now
+
+        val (tx, ty) = pickWanderTarget()
+        // convert screen target to delta from current position
+        // we don't know current window position here, so use a smaller relative move
+        // pick a direction towards the target zone
+        val cx = screenW / 2f  // assume roughly center-ish as reference
+        val cy = screenH / 2f
+        val angle = kotlin.math.atan2((ty - cy).toDouble(), (tx - cx).toDouble())
+        val dist = 30.0 + Math.random() * 60.0  // shorter moves: 30-90px
         val dx = (Math.cos(angle) * dist).toFloat()
         val dy = (Math.sin(angle) * dist).toFloat()
 
@@ -294,8 +336,8 @@ class PetView(context: Context) : View(context) {
             addUpdateListener {
                 val t = it.animatedValue as Float
                 val ox = dx * t; val oy = dy * t
-                val hop = (kotlin.math.sin(t * Math.PI) * 15f).toFloat()
-                swayOffset = (kotlin.math.sin(t * 3 * Math.PI) * 8f).toFloat()
+                val hop = (kotlin.math.sin(t * Math.PI) * 12f).toFloat()
+                swayOffset = (kotlin.math.sin(t * 3 * Math.PI) * 6f).toFloat()
                 onWanderMove?.invoke(ox - lastX, (oy - lastY) + hop)
                 lastX = ox; lastY = oy
                 invalidate()
