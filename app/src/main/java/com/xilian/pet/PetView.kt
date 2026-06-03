@@ -106,6 +106,8 @@ class PetView(context: Context) : View(context) {
     var wanderBubblesOn = true
     var screenW = 1080
     var screenH = 1920
+    var currentWinX = 0   // current window X in screen coords
+    var currentWinY = 0   // current window Y in screen coords
     private var sleepTimer: Runnable? = null
     private var shyTimer: Runnable? = null
     private var pinchDirChanges = 0
@@ -285,20 +287,18 @@ class PetView(context: Context) : View(context) {
 
     // ── wander: donut zone around screen edges ──
 
-    /** pick a random target in the outer 0-30% screen edges, avoiding center */
+    /** rejection sample a uniform point in the donut area (outer 30% screen edges) */
     private fun pickWanderTarget(): Pair<Float, Float> {
-        val margin = 0.30f  // outer 30% of screen
-        // pick which edge zone: top, bottom, left, right
-        val zone = (Math.random() * 4).toInt()
-        val rx = Math.random().toFloat()
-        val ry = Math.random().toFloat()
-        return when (zone) {
-            0 -> Pair(rx * screenW, ry * screenH * margin)                          // top strip
-            1 -> Pair(rx * screenW, screenH * (1f - margin) + ry * screenH * margin) // bottom strip
-            2 -> Pair(rx * screenW * margin, ry * screenH)                           // left strip
-            3 -> Pair(screenW * (1f - margin) + rx * screenW * margin, ry * screenH) // right strip
-            else -> Pair(screenW / 2f, screenH / 2f)
-        }
+        val margin = 0.30f
+        val innerL = screenW * margin; val innerR = screenW * (1f - margin)
+        val innerT = screenH * margin; val innerB = screenH * (1f - margin)
+        // rejection sample: keep trying until we land outside the inner rect
+        var x: Float; var y: Float
+        do {
+            x = (Math.random() * screenW).toFloat()
+            y = (Math.random() * screenH).toFloat()
+        } while (x in innerL..innerR && y in innerT..innerB)
+        return Pair(x, y)
     }
 
     private fun maybeWander() {
@@ -307,9 +307,9 @@ class PetView(context: Context) : View(context) {
         val now = System.currentTimeMillis()
         val elapsed = now - lastWanderTime
         val shouldWander = if (!wanderFirstDone) {
-            elapsed > 20_000L  // first trigger after 20s
+            elapsed > 20_000L
         } else {
-            elapsed > 10_000L && Math.random() < 0.5  // every 10s, 50% chance
+            elapsed > 10_000L && Math.random() < 0.5
         }
 
         if (!shouldWander) { animateSway(); return }
@@ -318,25 +318,19 @@ class PetView(context: Context) : View(context) {
         lastWanderTime = now
 
         val (tx, ty) = pickWanderTarget()
-        // convert screen target to delta from current position
-        // we don't know current window position here, so use a smaller relative move
-        // pick a direction towards the target zone
-        val cx = screenW / 2f  // assume roughly center-ish as reference
-        val cy = screenH / 2f
-        val angle = kotlin.math.atan2((ty - cy).toDouble(), (tx - cx).toDouble())
-        val dist = 30.0 + Math.random() * 60.0  // shorter moves: 30-90px
-        val dx = (Math.cos(angle) * dist).toFloat()
-        val dy = (Math.sin(angle) * dist).toFloat()
+        // compute total delta from current window position to target
+        val totalDx = tx - currentWinX - screenW / 2f  // adjust for window center
+        val totalDy = ty - currentWinY - screenH / 2f
 
         if (wanderBubblesOn && Math.random() < 0.25) speechText = wanderBubbles.random()
 
         var lastX = 0f; var lastY = 0f
         wanderAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1500L
+            duration = 2000L
             interpolator = android.view.animation.DecelerateInterpolator()
             addUpdateListener {
                 val t = it.animatedValue as Float
-                val ox = dx * t; val oy = dy * t
+                val ox = totalDx * t; val oy = totalDy * t
                 val hop = (kotlin.math.sin(t * Math.PI) * 12f).toFloat()
                 swayOffset = (kotlin.math.sin(t * 3 * Math.PI) * 6f).toFloat()
                 onWanderMove?.invoke(ox - lastX, (oy - lastY) + hop)

@@ -184,8 +184,15 @@ class FloatingPetService : Service() {
             ACTION_FREEZE -> petView.toggleFreeze()
             ACTION_RANDOM -> petView.randomAction()
             ACTION_OPACITY_POPUP -> showOpacityPopup()
-            ACTION_WANDER_TOGGLE -> { petView.wanderEnabled = !petView.wanderEnabled; updateNotification() }
-            ACTION_WANDER_BUBBLE_TOGGLE -> { petView.wanderBubblesOn = !petView.wanderBubblesOn }
+            ACTION_WANDER_TOGGLE -> {
+                petView.wanderEnabled = !petView.wanderEnabled
+                wanderOn = petView.wanderEnabled
+                updateNotification()
+            }
+            ACTION_WANDER_BUBBLE_TOGGLE -> {
+                petView.wanderBubblesOn = !petView.wanderBubblesOn
+                wanderBubbleOn = petView.wanderBubblesOn
+            }
         }
         return START_STICKY
     }
@@ -195,6 +202,7 @@ class FloatingPetService : Service() {
             lp.x = rawX.toInt() - lp.width / 2
             lp.y = rawY.toInt() - lp.height / 2 - STATUS_BAR_OFFSET
             windowManager.updateViewLayout(petView, lp)
+            syncWinPos()
             positionBubble()
         }
     }
@@ -204,7 +212,15 @@ class FloatingPetService : Service() {
             lp.x = (lp.x + dx.toInt()).coerceIn(-lp.width/2, resources.displayMetrics.widthPixels - lp.width/2)
             lp.y = (lp.y + dy.toInt()).coerceIn(0, resources.displayMetrics.heightPixels - lp.height)
             windowManager.updateViewLayout(petView, lp)
+            syncWinPos()
             positionBubble()
+        }
+    }
+
+    private fun syncWinPos() {
+        petLayoutParams?.let { lp ->
+            petView.currentWinX = lp.x
+            petView.currentWinY = lp.y
         }
     }
 
@@ -398,6 +414,8 @@ class FloatingPetService : Service() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     companion object {
+        var wanderOn = true
+        var wanderBubbleOn = true
         const val CHANNEL_ID = "xilian_pet"
         const val NOTIFICATION_ID = 28765
         const val ACTION_TOGGLE = "com.xilian.pet.TOGGLE"

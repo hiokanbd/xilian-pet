@@ -73,16 +73,19 @@ class ControlActivity : Activity() {
 
     private fun wanderRow(): View = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        addView(TextView(this@ControlActivity).apply {
-            text = "保持时游走"; setTextColor(0xFF8B7B6B.toInt()); textSize = 13f
-            setPadding(0, 0, dp(6), 0)
+        val wLabel = if (FloatingPetService.wanderOn) "游走: 开" else "游走: 关"
+        val bLabel = if (FloatingPetService.wanderBubbleOn) "气泡: 开" else "气泡: 关"
+        addView(smallBtn(wLabel) {
+            sendAction(FloatingPetService.ACTION_WANDER_TOGGLE)
+            FloatingPetService.wanderOn = !FloatingPetService.wanderOn
+            recreate()
         })
-        addView(smallBtn("开关") { sendAction(FloatingPetService.ACTION_WANDER_TOGGLE) })
-        addView(TextView(this@ControlActivity).apply {
-            text = "气泡"; setTextColor(0xFF8B7B6B.toInt()); textSize = 13f
-            setPadding(dp(6), 0, dp(6), 0)
+        addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(8), 0) })
+        addView(smallBtn(bLabel) {
+            sendAction(FloatingPetService.ACTION_WANDER_BUBBLE_TOGGLE)
+            FloatingPetService.wanderBubbleOn = !FloatingPetService.wanderBubbleOn
+            recreate()
         })
-        addView(smallBtn("开关") { sendAction(FloatingPetService.ACTION_WANDER_BUBBLE_TOGGLE) })
     }
 
     // ── opacity ──
