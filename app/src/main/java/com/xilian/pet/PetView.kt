@@ -301,8 +301,15 @@ class PetView(context: Context) : View(context) {
         return Pair(x, y)
     }
 
+    fun cancelWander() {
+        wanderAnimator?.cancel()
+        wanderAnimator = null
+        lastWanderTime = System.currentTimeMillis()
+    }
+
     private fun maybeWander() {
         if (wanderAnimator?.isRunning == true) return
+        if (isChatting) return
 
         val now = System.currentTimeMillis()
         val elapsed = now - lastWanderTime

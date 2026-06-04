@@ -274,6 +274,7 @@ class FloatingPetService : Service() {
 
     private fun handleChat(message: String) {
         petView.isChatting = true
+        petView.cancelWander()
         updateBubble("…")
 
         PetBridge.streamChat(
